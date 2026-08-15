@@ -1,0 +1,276 @@
+const path = require("path");
+const express = require("express");
+const cors = require("cors");
+const YTMusic = require("ytmusic-api");
+
+const PORT = process.env.PORT || 3000;
+const CACHE_TTL = 1000 * 60 * 10;
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "..", "public")));
+
+const ytmusic = new YTMusic();
+let ready = false;
+let initError = null;
+
+async function boot() {
+  try {
+    await ytmusic.initialize();
+    ready = true;
+    console.log("YTMusic API ready");
+  } catch (err) {
+    initError = err;
+    console.error("YTMusic init failed:", err.message);
+    setTimeout(boot, 5000);
+  }
+}
+boot();
+
+function requireReady(req, res, next) {
+  if (!ready) {
+    return res.status(503).json({ error: initError ? "Backend unavailable, retrying..." : "Still starting up, try again in a second" });
+  }
+  next();
+}
+
+function wrap(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+const cache = new Map();
+
+function cacheGet(key) {
+  const hit = cache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() > hit.expires) {
+    cache.delete(key);
+    return undefined;
+  }
+  return hit.value;
+}
+
+function cacheSet(key, value) {
+  cache.set(key, { value, expires: Date.now() + CACHE_TTL });
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of cache) {
+    if (now > entry.expires) cache.delete(key);
+  }
+}, 1000 * 60 * 5).unref();
+
+function bestThumb(thumbs) {
+  if (!Array.isArray(thumbs) || !thumbs.length) return "";
+  return thumbs[thumbs.length - 1]?.url || thumbs[0]?.url || "";
+}
+
+function mapSong(s) {
+  return {
+    videoId: s.videoId,
+    name: s.name || "Untitled Track",
+    artist: s.artist?.name || (Array.isArray(s.artists) ? s.artists.map((a) => a.name).join(", ") : "Unknown Artist"),
+    artistId: s.artist?.artistId || s.artists?.[0]?.artistId || null,
+    album: s.album?.name || "",
+    albumId: s.album?.albumId || null,
+    duration: s.duration || 0,
+    thumbnail: bestThumb(s.thumbnails),
+  };
+}
+
+function mapArtist(a) {
+  return {
+    artistId: a.artistId,
+    name: a.name || "Unknown Artist",
+    thumbnail: bestThumb(a.thumbnails),
+  };
+}
+
+function mapAlbum(al) {
+  return {
+    albumId: al.albumId,
+    name: al.name || "Untitled Album",
+    artist: al.artist?.name || (Array.isArray(al.artists) ? al.artists.map((a) => a.name).join(", ") : "Various Artists"),
+    year: al.year || "",
+    type: al.type || "Album",
+    thumbnail: bestThumb(al.thumbnails),
+  };
+}
+
+function mapPlaylist(p) {
+  return {
+    playlistId: p.playlistId,
+    name: p.name || "Playlist",
+    author: p.author?.name || p.author || "YT Music",
+    count: p.count || "",
+    thumbnail: bestThumb(p.thumbnails),
+  };
+}
+
+async function cached(key, loader) {
+  const hit = cacheGet(key);
+  if (hit !== undefined) return hit;
+  const value = await loader();
+  cacheSet(key, value);
+  return value;
+}
+
+app.get(
+  "/api/suggestions",
+  requireReady,
+  wrap(async (req, res) => {
+    const q = (req.query.q || "").trim();
+    if (!q) return res.json([]);
+    const suggestions = await cached(`sugg:${q}`, () => ytmusic.getSearchSuggestions(q));
+    res.json(suggestions || []);
+  })
+);
+
+app.get(
+  "/api/search",
+  requireReady,
+  wrap(async (req, res) => {
+    const q = (req.query.q || "").trim();
+    const type = (req.query.type || "all").toLowerCase();
+    if (!q) return res.status(400).json({ error: "Query parameter 'q' is required" });
+
+    const cacheKey = `search:${type}:${q}`;
+    const hit = cacheGet(cacheKey);
+    if (hit !== undefined) return res.json(hit);
+
+    let payload;
+
+    if (type === "songs") {
+      payload = (await ytmusic.searchSongs(q)).slice(0, 30).map(mapSong);
+    } else if (type === "artists") {
+      payload = (await ytmusic.searchArtists(q)).slice(0, 10).map(mapArtist);
+    } else if (type === "albums") {
+      payload = (await ytmusic.searchAlbums(q)).slice(0, 10).map(mapAlbum);
+    } else if (type === "playlists") {
+      payload = (await ytmusic.searchPlaylists(q)).slice(0, 10).map(mapPlaylist);
+    } else {
+      const [songsR, artistsR, albumsR, playlistsR] = await Promise.allSettled([
+        ytmusic.searchSongs(q),
+        ytmusic.searchArtists(q),
+        ytmusic.searchAlbums(q),
+        ytmusic.searchPlaylists(q),
+      ]);
+
+      const songs = songsR.status === "fulfilled" ? songsR.value.slice(0, 15).map(mapSong) : [];
+      const artists = artistsR.status === "fulfilled" ? artistsR.value.slice(0, 6).map(mapArtist) : [];
+      const albums = albumsR.status === "fulfilled" ? albumsR.value.slice(0, 6).map(mapAlbum) : [];
+      const playlists = playlistsR.status === "fulfilled" ? playlistsR.value.slice(0, 6).map(mapPlaylist) : [];
+
+      let topResult = null;
+      if (artists[0] && artists[0].name.toLowerCase().includes(q.toLowerCase())) {
+        topResult = { type: "artist", ...artists[0] };
+      } else if (songs[0]) {
+        topResult = { type: "song", ...songs[0] };
+      } else if (albums[0]) {
+        topResult = { type: "album", ...albums[0] };
+      }
+
+      payload = { topResult, songs, artists, albums, playlists };
+    }
+
+    cacheSet(cacheKey, payload);
+    res.json(payload);
+  })
+);
+
+app.get(
+  "/api/song/:id",
+  requireReady,
+  wrap(async (req, res) => {
+    const song = await cached(`song:${req.params.id}`, () => ytmusic.getSong(req.params.id));
+    res.json(song);
+  })
+);
+
+app.get(
+  "/api/lyrics/:id",
+  requireReady,
+  wrap(async (req, res) => {
+    try {
+      const lyrics = await cached(`lyrics:${req.params.id}`, () => ytmusic.getLyrics(req.params.id));
+      res.json({ lyrics: lyrics || [] });
+    } catch (err) {
+      res.status(200).json({ lyrics: [] });
+    }
+  })
+);
+
+app.get(
+  "/api/upnext/:id",
+  requireReady,
+  wrap(async (req, res) => {
+    const upNext = await ytmusic.getUpNexts(req.params.id);
+    res.json(upNext || []);
+  })
+);
+
+app.get(
+  "/api/artist/:id",
+  requireReady,
+  wrap(async (req, res) => {
+    const artist = await cached(`artist:${req.params.id}`, () => ytmusic.getArtist(req.params.id));
+    res.json(artist);
+  })
+);
+
+app.get(
+  "/api/album/:id",
+  requireReady,
+  wrap(async (req, res) => {
+    const album = await cached(`album:${req.params.id}`, () => ytmusic.getAlbum(req.params.id));
+    res.json(album);
+  })
+);
+
+app.get(
+  "/api/playlist/:id",
+  requireReady,
+  wrap(async (req, res) => {
+    const playlist = await cached(`playlist:${req.params.id}`, () => ytmusic.getPlaylist(req.params.id));
+    res.json(playlist);
+  })
+);
+
+app.get("/api/health", (req, res) => {
+  res.json({ ready, cacheSize: cache.size });
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: err.message || "Something went wrong" });
+});
+
+let activeServer;
+
+function startServer(port, attemptsLeft = 5) {
+  const server = app.listen(port, () => {
+    console.log(`Sonora backend running on http://localhost:${port}`);
+  });
+  activeServer = server;
+
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      if (attemptsLeft <= 0) {
+        console.error(`Port ${port} is in use and no free port was found nearby.`);
+        console.error(`Free it up with: netstat -ano | findstr :${port}  then  taskkill /PID <pid> /F`);
+        process.exit(1);
+      }
+      console.warn(`Port ${port} is in use, trying ${port + 1}...`);
+      startServer(port + 1, attemptsLeft - 1);
+    } else {
+      throw err;
+    }
+  });
+}
+
+startServer(PORT);
+
+process.on("SIGTERM", () => activeServer?.close(() => process.exit(0)));
+process.on("SIGINT", () => activeServer?.close(() => process.exit(0)));
