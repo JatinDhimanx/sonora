@@ -1782,43 +1782,236 @@ input {
 }
 .modal-btn-confirm:hover { background: var(--accent-coral-hover); }
 
-@media (max-width: 1024px) {
+/* ═════════════════ TABLET RESPONSIVE ═════════════════ */
+@media (min-width: 641px) and (max-width: 1024px) {
   .app-container {
-    grid-template-columns: var(--sidebar-collapsed-w) 1fr;
+    grid-template-columns: 64px 1fr;
+    grid-template-rows: 1fr 78px;
+    grid-template-areas:
+      "sidebar main"
+      "player player";
   }
-  .brand-name, .nav-section-title, .nav-label {
-    display: none;
-  }
+
   .sidebar {
     align-items: center;
-    padding: 24px 8px;
+    padding: 20px 8px;
+    gap: 24px;
+    border-right: 1px solid var(--border-subtle);
   }
+
+  .sidebar__brand {
+    padding: 0;
+  }
+
+  .brand-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .brand-name, 
+  .nav-section-title, 
+  .nav-label {
+    display: none !important;
+  }
+
+  .sidebar__content {
+    align-items: center;
+    gap: 20px;
+  }
+
+  .nav-group {
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-list {
+    align-items: center;
+    gap: 6px;
+  }
+
   .nav-item {
     justify-content: center;
-    padding: 10px;
+    padding: 0;
     width: 44px;
     height: 44px;
     border-radius: 12px;
   }
+
+  .nav-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .topbar {
+    padding: 0 24px;
+    height: 56px;
+  }
+
+  .topbar-quote {
+    font-size: 11.5px;
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .search-input-wrap {
+    width: 220px;
+  }
+
   .content-body {
-    padding: 24px 28px 40px;
+    padding: 24px 28px 44px;
   }
+
+  .view-panel {
+    gap: 30px;
+  }
+
+  .page-serif-title, 
+  .hero-serif-title {
+    font-size: 36px;
+  }
+
+  .page-serif-title .serif-italic, 
+  .hero-serif-title .serif-italic {
+    font-size: 40px;
+  }
+
   .hero-showcase {
-    grid-template-columns: 1fr;
-    padding: 32px 24px;
+    grid-template-columns: 1.2fr 0.8fr;
+    padding: 28px 24px;
+    gap: 20px;
   }
+
+  .hero-display-title {
+    font-size: 34px;
+    line-height: 1.15;
+  }
+
+  .serif-italic-accent {
+    font-size: 38px;
+  }
+
+  .hero-description {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .hero-actions-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .btn-coral-glow,
+  .btn-ghost-pill {
+    padding: 10px 18px;
+    font-size: 12.5px;
+  }
+
   .hero-artwork-deck {
-    display: none;
+    height: 220px;
   }
+
+  .deck-card--back {
+    width: 140px;
+    height: 140px;
+    transform: translateX(45px) translateY(-15px) rotate(8deg);
+  }
+
+  .deck-card--mid {
+    width: 160px;
+    height: 160px;
+    transform: translateX(-45px) translateY(8px) rotate(-6deg);
+  }
+
+  .deck-card--front {
+    width: 185px;
+    height: 185px;
+  }
+
+  .deck-info-glass {
+    padding: 8px 10px;
+  }
+
+  .deck-title {
+    font-size: 12px;
+  }
+
+  .deck-artist {
+    font-size: 10.5px;
+  }
+
+  .deck-play-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .deck-play-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
   .albums-grid-modern,
   .albums-grid-5 {
     grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
   }
+
   .playlists-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .track-row {
+    grid-template-columns: 32px 38px 1.8fr 1.2fr 54px 32px;
+    padding: 9px 12px;
+  }
+
+  .search-hero-wrapper {
+    gap: 14px;
+  }
+
+  .search-bar-main {
+    padding: 10px 16px;
+  }
+
+  .player-bar {
+    grid-template-columns: 200px 1fr 160px;
+    padding: 0 20px;
+  }
+
+  .player-thumb {
+    width: 40px;
+    height: 40px;
+  }
+
+  .player-title {
+    font-size: 13px;
+  }
+
+  .player-artist {
+    font-size: 11px;
+  }
+
+  .player-controls {
+    gap: 16px;
+  }
+
+  .play-pause-circle {
+    width: 34px;
+    height: 34px;
+  }
+
+  .vol-bar-wrap {
+    width: 60px;
+  }
+
+  .lyrics-drawer {
+    width: 320px;
   }
 }
 
+/* ═════════════════ MOBILE RESPONSIVE ═════════════════ */
 @media (max-width: 640px) {
   .app-container {
     grid-template-columns: 56px 1fr;
@@ -1940,6 +2133,11 @@ input {
     padding: 20px 16px;
     border-radius: 18px;
     gap: 16px;
+    grid-template-columns: 1fr;
+  }
+
+  .hero-artwork-deck {
+    display: none;
   }
 
   .hero-content {
