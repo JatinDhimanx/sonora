@@ -1,0 +1,16 @@
+{
+  "name": "sonora-music-player",
+  "version": "1.0.0",
+  "description": "Sonora — A quiet, elegant music player prototype powered by YT Music API",
+  "main": "backend/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node backend/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "serverless-http": "^3.2.0",
+    "ytmusic-api": "^5.2.4"
+  }
+}
