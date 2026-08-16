@@ -302,11 +302,6 @@ function onPlayerStateChange(event) {
     setPlayingState(true);
     startProgressTimer();
   } else if (event.data === YT.PlayerState.PAUSED) {
-    if (document.visibilityState === 'hidden') {
-      // Mobile screen locked or tab backgrounded: keep music playing via background audio bridge
-      initBgAudioBridge();
-      return;
-    }
     setPlayingState(false);
     stopProgressTimer();
   } else if (event.data === YT.PlayerState.ENDED) {
@@ -503,7 +498,7 @@ function updateProgress() {
     syncFullscreenLyricsProgress(cur);
   }
 
-  if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && dur > 0) {
+  if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && dur > 0 && isPlaying) {
     try {
       navigator.mediaSession.setPositionState({
         duration: dur,
