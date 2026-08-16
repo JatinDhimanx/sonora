@@ -5,14 +5,30 @@
 
 ---
 
+## 📦 GitHub Release & APK Download
+
+[![GitHub Release](https://img.shields.io/badge/Release-v1.0.0-E05D38?style=for-the-badge&logo=github)](https://github.com/JatinDhimanx/sonora/releases/tag/v1.0.0)
+[![Download APK](https://img.shields.io/badge/Download-Sonora__v1.0.0.apk-3E85F7?style=for-the-badge&logo=android)](https://github.com/JatinDhimanx/sonora/releases/download/v1.0.0/Sonora-v1.0.0.apk)
+
+### 📲 Download Options
+
+- **📥 Direct APK Download**: [Download `Sonora-v1.0.0.apk`](https://raw.githubusercontent.com/JatinDhimanx/sonora/main/Sonora-v1.0.0.apk)
+- **🏷️ GitHub Official Release Page**: [View Release `v1.0.0`](https://github.com/JatinDhimanx/sonora/releases/tag/v1.0.0)
+
+---
+
 ## 📱 Android App (APK / PWA) Installation
 
-Sonora is a **Native-Grade Progressive Web Application (PWA)**. You can install it directly on your Android phone as a standalone `.apk` / app with full **Background Screen-Off Music Playback**!
+Sonora is a **Native-Grade Progressive Web Application (PWA)** & Android WebAPK package. You can install it directly on your Android phone as a standalone `.apk` / app with full **Background Screen-Off Music Playback**!
 
 ### 🚀 Quick Install Guide (Android & Desktop)
 
-#### **Android Phone (Chrome / Brave / Edge)**:
-1. Open the app link on your phone browser.
+#### **Method 1: Direct APK Download**:
+1. Download [**`Sonora-v1.0.0.apk`**](https://raw.githubusercontent.com/JatinDhimanx/sonora/main/Sonora-v1.0.0.apk) or visit [**GitHub Releases**](https://github.com/JatinDhimanx/sonora/releases/tag/v1.0.0).
+2. Open the file on your Android phone to install the Sonora App.
+
+#### **Method 2: Android Browser PWA 1-Tap WebAPK**:
+1. Open the app link on your phone browser (Chrome / Brave / Edge).
 2. Tap the **"Add to Home Screen"** or **"Install Sonora"** prompt in your browser menu.
 3. Sonora will automatically package and install as a **Native Android App (`Sonora.apk`)** on your home screen!
 4. **Background Audio**: Play any track, lock your mobile screen, and enjoy **uninterrupted music playback** with native phone lockscreen controls!
@@ -41,6 +57,7 @@ Sonora is a **Native-Grade Progressive Web Application (PWA)**. You can install 
 
 ```
 ytmusic-prototype/
+├── Sonora-v1.0.0.apk    # Android App Installer Package
 ├── backend/
 │   └── server.js        # Express REST API, LRCLIB Synced Lyrics & Audio Stream Proxy
 ├── public/
@@ -49,7 +66,8 @@ ytmusic-prototype/
 │   ├── script.js        # 120 FPS Progress Loop & MediaSession Background Bridge
 │   ├── favicon.svg      # HD Vector App Icon
 │   ├── manifest.json   # PWA Web App Manifest
-│   └── sw.js            # Offline Caching Service Worker
+│   ├── sw.js            # Offline Caching Service Worker
+│   └── Sonora-v1.0.0.apk# Public Downloadable APK Asset
 └── README.md
 ```
 
