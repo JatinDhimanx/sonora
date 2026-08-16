@@ -322,20 +322,36 @@ document.addEventListener('visibilitychange', () => {
       initBgAudioBridge();
     }
   } else if (document.visibilityState === 'visible') {
-    if (isPlaying && ytPlayer && isPlayerReady) {
-      try {
-        const state = ytPlayer.getPlayerState();
-        if (state === YT.PlayerState.PAUSED) {
-          ytPlayer.playVideo();
-        }
-      } catch (e) {}
+    if (isPlaying) {
+      if (bgAudioBridge && !bgAudioBridge.paused) {
+        try {
+          const bgTime = bgAudioBridge.currentTime || 0;
+          if (ytPlayer && isPlayerReady && bgTime > 0) {
+            ytPlayer.seekTo(bgTime, true);
+            ytPlayer.playVideo();
+          }
+        } catch (e) {}
+      }
     }
   }
 });
 
 function initBgAudioBridge() {
   if (!bgAudioBridge) return;
-  if (!bgAudioBridge.src || bgAudioBridge.src !== SILENT_AUDIO_SRC) {
+  if (currentTrack && currentTrack.videoId) {
+    const streamUrl = `${API_BASE}/api/stream/${currentTrack.videoId}`;
+    if (!bgAudioBridge.src.includes(currentTrack.videoId)) {
+      bgAudioBridge.src = streamUrl;
+    }
+    if (ytPlayer && isPlayerReady) {
+      try {
+        const curTime = ytPlayer.getCurrentTime() || 0;
+        if (Math.abs(bgAudioBridge.currentTime - curTime) > 2) {
+          bgAudioBridge.currentTime = curTime;
+        }
+      } catch (e) {}
+    }
+  } else if (!bgAudioBridge.src || bgAudioBridge.src !== SILENT_AUDIO_SRC) {
     bgAudioBridge.src = SILENT_AUDIO_SRC;
   }
   bgAudioBridge.play().catch(() => {});

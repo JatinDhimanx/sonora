@@ -2,6 +2,7 @@ const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const YTMusic = require("ytmusic-api");
+const ytdl = require("@distube/ytdl-core");
 
 const PORT = process.env.PORT || 3000;
 const CACHE_TTL = 1000 * 60 * 10;
@@ -186,6 +187,40 @@ app.get(
       res.json({ synced: false, lines: [] });
     } catch (err) {
       res.status(200).json({ synced: false, lines: [] });
+    }
+  })
+);
+
+app.get(
+  "/api/stream/:id",
+  wrap(async (req, res) => {
+    const videoId = req.params.id;
+    if (!videoId || videoId === "unknown") {
+      return res.status(400).send("Invalid video ID");
+    }
+
+    try {
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Accept-Ranges", "bytes");
+
+      const stream = ytdl(videoId, {
+        filter: "audioonly",
+        quality: "highestaudio",
+        highWaterMark: 1 << 25
+      });
+
+      stream.on("error", (err) => {
+        console.warn("YTDL Stream error:", err.message);
+        if (!res.headersSent) {
+          res.status(500).send("Stream error");
+        }
+      });
+
+      stream.pipe(res);
+    } catch (err) {
+      if (!res.headersSent) {
+        res.status(500).send(err.message);
+      }
     }
   })
 );
