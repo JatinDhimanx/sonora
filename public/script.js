@@ -158,6 +158,7 @@ const bgAudioBridge = $('bgAudioBridge');
 const SILENT_AUDIO_SRC = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQ8AAACAgICAgICAgICAgIA=';
 
 document.addEventListener('DOMContentLoaded', () => {
+  registerServiceWorker();
   setupNavigation();
   setupHistoryNavigation();
   setupSearchEngine();
@@ -173,6 +174,18 @@ document.addEventListener('DOMContentLoaded', () => {
   renderCustomPlaylists();
   setTrackInfo(DEFAULT_SONG);
 });
+
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        console.log('Sonora PWA Service Worker registered:', reg.scope);
+      }).catch((err) => {
+        console.warn('Service Worker registration failed:', err);
+      });
+    });
+  }
+}
 
 function updateTimeTag() {
   const el = $('currentTimeTag');
