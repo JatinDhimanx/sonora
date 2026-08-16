@@ -62,10 +62,133 @@ setInterval(() => {
   }
 }, 1000 * 60 * 5).unref();
 
+function upgradeThumbToHD(url) {
+  if (!url) return "";
+  let hd = url.replace(/=w\d+-h\d+/, '=w512-h512')
+             .replace(/=s\d+/, '=s512')
+             .replace(/=w\d+/, '=w512');
+  if (hd.includes('ytimg.com')) {
+    hd = hd.replace('/default.jpg', '/hqdefault.jpg')
+           .replace('/sddefault.jpg', '/maxresdefault.jpg')
+           .replace('/hqdefault.jpg', '/maxresdefault.jpg');
+  }
+  return hd;
+}
+
 function bestThumb(thumbs) {
   if (!Array.isArray(thumbs) || !thumbs.length) return "";
-  return thumbs[thumbs.length - 1]?.url || thumbs[0]?.url || "";
+  const raw = thumbs[thumbs.length - 1]?.url || thumbs[0]?.url || "";
+  return upgradeThumbToHD(raw);
 }
+
+function parseLrc(lrcText) {
+  if (!lrcText) return [];
+  const lines = lrcText.split("\n");
+  const result = [];
+  const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
+  for (const line of lines) {
+    const match = timeRegex.exec(line);
+    if (match) {
+      const min = parseInt(match[1], 10);
+      const sec = parseInt(match[2], 10);
+      const msStr = match[3];
+      const ms = msStr.length === 2 ? parseInt(msStr, 10) / 100 : parseInt(msStr, 10) / 1000;
+      const time = min * 60 + sec + ms;
+      const text = line.replace(timeRegex, "").trim();
+      if (text) {
+        result.push({ time, text });
+      }
+    }
+  }
+  return result.sort((a, b) => a.time - b.time);
+}
+
+function withTimeout(promise, ms = 3500) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms))
+  ]);
+}
+
+async function getSyncedLyrics(title, artist) {
+  if (!title) return null;
+  try {
+    const cleanTitle = title.replace(/\(.*?\)|\[.*?\]/g, "").trim();
+    const cleanArtist = (artist || "").replace(/\(.*?\)|\[.*?\]/g, "").trim();
+
+    // 1. Try exact get endpoint
+    if (cleanArtist) {
+      const getUrl = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(cleanArtist)}&track_name=${encodeURIComponent(cleanTitle)}`;
+      const getResp = await fetch(getUrl, { headers: { "User-Agent": "SonoraMusicApp/1.0" } });
+      if (getResp.ok) {
+        const data = await getResp.json();
+        if (data.syncedLyrics) {
+          const parsed = parseLrc(data.syncedLyrics);
+          if (parsed.length) return parsed;
+        } else if (data.plainLyrics) {
+          const lines = data.plainLyrics.split("\n").map(l => l.trim()).filter(Boolean);
+          if (lines.length) return lines.map((l, i) => ({ time: i * 4, text: l }));
+        }
+      }
+    }
+
+    // 2. Try flexible search endpoint
+    const query = `${cleanTitle} ${cleanArtist}`.trim();
+    const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
+    const searchResp = await fetch(searchUrl, { headers: { "User-Agent": "SonoraMusicApp/1.0" } });
+    if (searchResp.ok) {
+      const results = await searchResp.json();
+      if (Array.isArray(results) && results.length) {
+        const item = results.find(r => r.syncedLyrics || r.plainLyrics) || results[0];
+        if (item) {
+          if (item.syncedLyrics) {
+            const parsed = parseLrc(item.syncedLyrics);
+            if (parsed.length) return parsed;
+          } else if (item.plainLyrics) {
+            const lines = item.plainLyrics.split("\n").map(l => l.trim()).filter(Boolean);
+            if (lines.length) return lines.map((l, i) => ({ time: i * 4, text: l }));
+          }
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+app.get(
+  "/api/lyrics/:id",
+  requireReady,
+  wrap(async (req, res) => {
+    try {
+      const videoId = req.params.id;
+      const title = (req.query.title || "").trim();
+      const artist = (req.query.artist || "").trim();
+
+      if (title) {
+        try {
+          const synced = await cached(`synced:${title}:${artist}`, () => withTimeout(getSyncedLyrics(title, artist), 3500));
+          if (synced && synced.length) {
+            return res.json({ synced: true, lines: synced });
+          }
+        } catch (e) {}
+      }
+
+      if (videoId && videoId !== "unknown") {
+        try {
+          const lyrics = await cached(`lyrics:${videoId}`, () => withTimeout(ytmusic.getLyrics(videoId), 3500));
+          if (Array.isArray(lyrics) && lyrics.length) {
+            const plainLines = lyrics.map((text) => (typeof text === "string" ? text : text.text || ""));
+            return res.json({ synced: false, lines: plainLines });
+          }
+        } catch (e) {}
+      }
+
+      res.json({ synced: false, lines: [] });
+    } catch (err) {
+      res.status(200).json({ synced: false, lines: [] });
+    }
+  })
+);
 
 function mapSong(s) {
   return {
