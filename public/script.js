@@ -289,6 +289,11 @@ function onPlayerStateChange(event) {
     setPlayingState(true);
     startProgressTimer();
   } else if (event.data === YT.PlayerState.PAUSED) {
+    if (document.visibilityState === 'hidden') {
+      // Mobile screen locked or tab backgrounded: keep music playing via background audio bridge
+      initBgAudioBridge();
+      return;
+    }
     setPlayingState(false);
     stopProgressTimer();
   } else if (event.data === YT.PlayerState.ENDED) {
@@ -302,6 +307,23 @@ function onPlayerStateChange(event) {
     }
   }
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    if (isPlaying) {
+      initBgAudioBridge();
+    }
+  } else if (document.visibilityState === 'visible') {
+    if (isPlaying && ytPlayer && isPlayerReady) {
+      try {
+        const state = ytPlayer.getPlayerState();
+        if (state === YT.PlayerState.PAUSED) {
+          ytPlayer.playVideo();
+        }
+      } catch (e) {}
+    }
+  }
+});
 
 function initBgAudioBridge() {
   if (!bgAudioBridge) return;
