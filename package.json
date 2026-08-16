@@ -8,10 +8,15 @@
     "start": "node backend/server.js"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "@distube/ytdl-core": "^4.16.12",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "serverless-http": "^3.2.0",
     "ytmusic-api": "^5.2.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.0"
   }
 }

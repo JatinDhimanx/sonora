@@ -160,6 +160,7 @@ const SILENT_AUDIO_SRC = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEA
 document.addEventListener('DOMContentLoaded', () => {
   registerServiceWorker();
   setupAppInstallation();
+  setupBatteryOptButton();
   setupNavigation();
   setupHistoryNavigation();
   setupSearchEngine();
@@ -175,6 +176,20 @@ document.addEventListener('DOMContentLoaded', () => {
   renderCustomPlaylists();
   setTrackInfo(DEFAULT_SONG);
 });
+
+function setupBatteryOptButton() {
+  const batteryBtn = $('batteryOptBtn');
+  if (batteryBtn) {
+    batteryBtn.addEventListener('click', () => {
+      showToast('Opening Battery Optimization Settings... Whitelist Sonora to keep audio playing in background!');
+      if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+        try {
+          window.location.href = 'intent:#Intent;action=android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;end';
+        } catch (e) {}
+      }
+    });
+  }
+}
 
 let deferredInstallPrompt = null;
 
