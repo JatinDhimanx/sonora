@@ -159,6 +159,7 @@ const SILENT_AUDIO_SRC = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEA
 
 document.addEventListener('DOMContentLoaded', () => {
   registerServiceWorker();
+  setupAppInstallation();
   setupNavigation();
   setupHistoryNavigation();
   setupSearchEngine();
@@ -174,6 +175,42 @@ document.addEventListener('DOMContentLoaded', () => {
   renderCustomPlaylists();
   setTrackInfo(DEFAULT_SONG);
 });
+
+let deferredInstallPrompt = null;
+
+function setupAppInstallation() {
+  const installBtn = $('installAppBtn');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if (installBtn) {
+      installBtn.classList.remove('hidden');
+    }
+  });
+
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') {
+          showToast('Sonora App installed on your system!');
+        }
+        deferredInstallPrompt = null;
+        installBtn.classList.add('hidden');
+      } else {
+        showToast('Use your browser menu (or top address bar) to install Sonora App!');
+      }
+    });
+  }
+
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    if (installBtn) installBtn.classList.add('hidden');
+    showToast('Sonora App installed successfully!');
+  });
+}
 
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
