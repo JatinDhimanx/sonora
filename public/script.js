@@ -347,9 +347,20 @@ window.onYouTubeIframeAPIReady = function () {
       },
       onStateChange: onPlayerStateChange,
       onError: (event) => {
-        console.warn('YouTube Player error:', event.data);
-        showToast('Playback error on track, skipping...');
-        setTimeout(playNextTrack, 800);
+        console.warn('YouTube Player IFrame notice/error:', event.data);
+        if (currentTrack && currentTrack.videoId && bgAudioBridge) {
+          bgAudioBridge.src = `${API_BASE}/api/stream/${currentTrack.videoId}`;
+          bgAudioBridge.play().then(() => {
+            setPlayingState(true);
+            startProgressTimer();
+          }).catch(() => {
+            showToast('Playback error on track, skipping...');
+            setTimeout(playNextTrack, 1000);
+          });
+        } else {
+          showToast('Playback error on track, skipping...');
+          setTimeout(playNextTrack, 1000);
+        }
       }
     }
   });
@@ -542,9 +553,14 @@ function updateProgress() {
   let cur = 0;
   let dur = (currentTrack && currentTrack.duration) ? currentTrack.duration : 0;
 
-  if (ytPlayer && isPlayerReady) {
-    cur = ytPlayer.getCurrentTime() || 0;
-    dur = ytPlayer.getDuration() || dur;
+  if (bgAudioBridge && !bgAudioBridge.paused && bgAudioBridge.duration > 0) {
+    cur = bgAudioBridge.currentTime || 0;
+    dur = bgAudioBridge.duration || dur;
+  } else if (ytPlayer && isPlayerReady) {
+    try {
+      cur = ytPlayer.getCurrentTime() || 0;
+      dur = ytPlayer.getDuration() || dur;
+    } catch (e) {}
   }
 
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
@@ -882,16 +898,23 @@ function playTrack(track, playlist = []) {
 
   setPlayingState(true);
 
-  if (isPlayerReady && ytPlayer && track.videoId) {
-    ytPlayer.loadVideoById(track.videoId);
-  } else if (track.videoId) {
-    const checkTimer = setInterval(() => {
-      if (isPlayerReady && ytPlayer) {
-        clearInterval(checkTimer);
+  if (track.videoId) {
+    if (isPlayerReady && ytPlayer) {
+      try {
         ytPlayer.loadVideoById(track.videoId);
+      } catch (e) {
+        initBgAudioBridge();
       }
-    }, 100);
-    setTimeout(() => clearInterval(checkTimer), 4000);
+    } else {
+      initBgAudioBridge();
+      const checkTimer = setInterval(() => {
+        if (isPlayerReady && ytPlayer) {
+          clearInterval(checkTimer);
+          try { ytPlayer.loadVideoById(track.videoId); } catch(e) {}
+        }
+      }, 100);
+      setTimeout(() => clearInterval(checkTimer), 3000);
+    }
   } else if (track.query || track.name) {
     fetchAndPlaySearch(track.query || `${track.name} ${track.artist || ''}`);
   }
