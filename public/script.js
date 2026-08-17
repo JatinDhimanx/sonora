@@ -338,6 +338,45 @@ function capitalize(str) {
   return str.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('');
 }
 
+let playbackFailoverTimer = null;
+
+async function attemptAudioFailover(track) {
+  if (!track || !track.videoId) return;
+  if (!bgAudioBridge) return;
+
+  const videoId = track.videoId;
+
+  // Tier 2: Try Server Proxy Stream (/api/stream/:id)
+  try {
+    bgAudioBridge.src = `${API_BASE}/api/stream/${videoId}`;
+    await bgAudioBridge.play();
+    setPlayingState(true);
+    startProgressTimer();
+    return;
+  } catch (e) {
+    console.warn('Server proxy stream failed, attempting Tier 3 direct CDN stream...');
+  }
+
+  // Tier 3: Try Direct CDN Audio Stream (/api/stream-url/:id)
+  try {
+    const res = await fetch(`${API_BASE}/api/stream-url/${videoId}`);
+    const data = await res.json();
+    if (data && data.url) {
+      bgAudioBridge.src = data.url;
+      await bgAudioBridge.play();
+      setPlayingState(true);
+      startProgressTimer();
+      return;
+    }
+  } catch (e) {
+    console.warn('Tier 3 direct CDN stream failed...');
+  }
+
+  // Tier 4: Safety Net — Auto Skip to Next Track
+  showToast('Track unavailable, playing next...');
+  setTimeout(playNextTrack, 1000);
+}
+
 window.onYouTubeIframeAPIReady = function () {
   ytPlayer = new YT.Player('ytPlayer', {
     height: '1',
@@ -354,18 +393,8 @@ window.onYouTubeIframeAPIReady = function () {
       onStateChange: onPlayerStateChange,
       onError: (event) => {
         console.warn('YouTube Player error:', event.data);
-        if (currentTrack && currentTrack.videoId && bgAudioBridge) {
-          bgAudioBridge.src = `${API_BASE}/api/stream/${currentTrack.videoId}`;
-          bgAudioBridge.play().then(() => {
-            setPlayingState(true);
-            startProgressTimer();
-          }).catch(() => {
-            showToast('Playback error on track, skipping...');
-            setTimeout(playNextTrack, 1000);
-          });
-        } else {
-          showToast('Playback error on track, skipping...');
-          setTimeout(playNextTrack, 1000);
+        if (currentTrack) {
+          attemptAudioFailover(currentTrack);
         }
       }
     }
@@ -374,6 +403,7 @@ window.onYouTubeIframeAPIReady = function () {
 
 function onPlayerStateChange(event) {
   if (event.data === YT.PlayerState.PLAYING) {
+    if (playbackFailoverTimer) clearTimeout(playbackFailoverTimer);
     setPlayingState(true);
     startProgressTimer();
   } else if (event.data === YT.PlayerState.PAUSED) {
@@ -901,15 +931,17 @@ function playTrack(track, playlist = []) {
 
   setPlayingState(true);
 
+  if (playbackFailoverTimer) clearTimeout(playbackFailoverTimer);
+
   if (track.videoId) {
     if (isPlayerReady && ytPlayer) {
       try {
         ytPlayer.loadVideoById(track.videoId);
       } catch (e) {
-        initBgAudioBridge();
+        attemptAudioFailover(track);
       }
     } else {
-      initBgAudioBridge();
+      attemptAudioFailover(track);
       const checkTimer = setInterval(() => {
         if (isPlayerReady && ytPlayer) {
           clearInterval(checkTimer);
@@ -918,6 +950,14 @@ function playTrack(track, playlist = []) {
       }, 100);
       setTimeout(() => clearInterval(checkTimer), 3000);
     }
+
+    // Safety watchdog: If YouTube iframe stalls or encounters a silent error, failover to audio bridge
+    playbackFailoverTimer = setTimeout(() => {
+      if (currentTrack && currentTrack.videoId === track.videoId && !isPlaying) {
+        console.warn('IFrame playback stalled, switching to audio bridge failover...');
+        attemptAudioFailover(track);
+      }
+    }, 3200);
   } else if (track.query || track.name) {
     fetchAndPlaySearch(track.query || `${track.name} ${track.artist || ''}`);
   }

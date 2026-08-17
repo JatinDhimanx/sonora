@@ -393,7 +393,7 @@ app.get(
       res.setHeader("Accept-Ranges", "bytes");
 
       const stream = ytdl(videoId, {
-        filter: "audioonly",
+        filter: format => format.hasAudio,
         highWaterMark: 1 << 25
       });
 
@@ -409,6 +409,31 @@ app.get(
       if (!res.headersSent) {
         res.status(500).send(err.message);
       }
+    }
+  })
+);
+
+app.get(
+  "/api/stream-url/:id",
+  wrap(async (req, res) => {
+    const videoId = req.params.id;
+    if (!videoId || videoId === "unknown") {
+      return res.status(400).json({ error: "Invalid video ID" });
+    }
+
+    try {
+      const info = await ytdl.getInfo(videoId);
+      const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
+      if (audioFormats && audioFormats.length) {
+        return res.json({ url: audioFormats[0].url });
+      }
+      const anyAudio = info.formats.find(f => f.hasAudio);
+      if (anyAudio && anyAudio.url) {
+        return res.json({ url: anyAudio.url });
+      }
+      res.status(404).json({ error: "No audio format found" });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   })
 );
