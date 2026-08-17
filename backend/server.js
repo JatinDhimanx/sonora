@@ -1,6 +1,7 @@
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 const YTMusic = require("ytmusic-api");
 const ytdl = require("@distube/ytdl-core");
 
@@ -58,42 +59,27 @@ app.use((req, res, next) => {
   next();
 });
 
-function getValidTimePasswords() {
-  const now = new Date();
-  const passwords = new Set();
+// SHA-256 encrypted hash of admin password
+const ADMIN_PASSWORD_HASH = "5f3fc8eadb4e80553b8d14ffdce588037993cdf081be2c31c7923e23445c0623";
 
-  [-1, 0, 1].forEach(offset => {
-    const d = new Date(now.getTime() + offset * 60000);
-    const h24 = d.getHours();
-    const m = d.getMinutes();
-
-    const hh24 = h24.toString().padStart(2, '0');
-    const mm = m.toString().padStart(2, '0');
-
-    passwords.add(`${hh24}${mm}`);
-    passwords.add(`${hh24}:${mm}`);
-
-    const h12 = h24 % 12 || 12;
-    const hh12 = h12.toString().padStart(2, '0');
-    passwords.add(`${hh12}${mm}`);
-    passwords.add(`${h12}${mm}`);
-    passwords.add(`${hh12}:${mm}`);
-  });
-
-  return passwords;
+function verifyAdminPassword(inputPassword) {
+  if (!inputPassword) return false;
+  const inputHash = crypto.createHash("sha256").update(inputPassword.trim()).digest("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(inputHash), Buffer.from(ADMIN_PASSWORD_HASH));
+  } catch (e) {
+    return false;
+  }
 }
 
 // Admin Auth Login Route
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body || {};
-  const cleanPass = (password || '').toString().trim();
-  const validSet = getValidTimePasswords();
-
-  if (validSet.has(cleanPass)) {
+  if (verifyAdminPassword(password)) {
     return res.json({ success: true, token: 'admin_auth_granted' });
   }
 
-  res.status(401).json({ success: false, error: 'Incorrect time password' });
+  res.status(401).json({ success: false, error: 'Incorrect admin password' });
 });
 
 // Admin Page Route
