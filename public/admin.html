@@ -233,6 +233,75 @@
       animation: fadeIn 0.3s ease;
     }
 
+    /* Password Login Modal */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(7, 8, 10, 0.94);
+      backdrop-filter: blur(30px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .login-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 36px 28px;
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+    }
+
+    .login-icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+    }
+
+    .login-card h2 {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .login-card p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+
+    .login-card input {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 18px;
+      text-align: center;
+      letter-spacing: 4px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .login-card input:focus {
+      border-color: var(--accent-coral);
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .login-err {
+      color: #f87171;
+      font-size: 13px;
+      margin-top: 14px;
+      font-weight: 600;
+    }
+
+    .hidden { display: none !important; }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
@@ -240,6 +309,20 @@
   </style>
 </head>
 <body>
+  <!-- Login Password Overlay -->
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card">
+      <div class="login-icon">🔒</div>
+      <h2>Sonora Admin Authentication</h2>
+      <p>Enter Current Time Password (e.g., 1457 for 2:57 PM)</p>
+      <form id="loginForm">
+        <input type="password" id="passInput" placeholder="HHMM" maxlength="5" autocomplete="off" autofocus />
+        <button type="submit" class="btn-coral" style="width:100%;margin-top:14px;">Unlock Dashboard</button>
+      </form>
+      <div class="login-err hidden" id="loginErr">Incorrect current time password</div>
+    </div>
+  </div>
+
   <div class="admin-container">
     <div class="header-row">
       <div class="brand-title">
@@ -293,6 +376,7 @@
 
   <script>
     const API_BASE = '';
+    let isAuthenticated = false;
 
     function showToast(text) {
       const t = document.getElementById('toastMsg');
@@ -309,7 +393,36 @@
       return `${min}m ago`;
     }
 
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pass = document.getElementById('passInput').value;
+      const err = document.getElementById('loginErr');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pass })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          isAuthenticated = true;
+          document.getElementById('loginOverlay').classList.add('hidden');
+          loadSessions();
+          setInterval(loadSessions, 4000);
+        } else {
+          err.classList.remove('hidden');
+          err.textContent = data.error || 'Incorrect time password';
+        }
+      } catch (e) {
+        err.classList.remove('hidden');
+        err.textContent = 'Server verification error';
+      }
+    });
+
     async function loadSessions() {
+      if (!isAuthenticated) return;
       try {
         const res = await fetch(`${API_BASE}/api/admin/sessions`);
         const data = await res.json();
@@ -345,6 +458,7 @@
     }
 
     async function resetCache(ip) {
+      if (!isAuthenticated) return;
       try {
         const res = await fetch(`${API_BASE}/api/admin/reset-cache`, {
           method: 'POST',
@@ -360,6 +474,7 @@
     }
 
     document.getElementById('resetAllBtn').addEventListener('click', async () => {
+      if (!isAuthenticated) return;
       if (!confirm('Are you sure you want to reset cache for ALL connected user devices?')) return;
       try {
         const res = await fetch(`${API_BASE}/api/admin/reset-cache`, {
@@ -374,9 +489,6 @@
         showToast('Reset failed');
       }
     });
-
-    loadSessions();
-    setInterval(loadSessions, 4000);
   </script>
 </body>
 </html>

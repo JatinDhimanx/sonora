@@ -58,6 +58,44 @@ app.use((req, res, next) => {
   next();
 });
 
+function getValidTimePasswords() {
+  const now = new Date();
+  const passwords = new Set();
+
+  [-1, 0, 1].forEach(offset => {
+    const d = new Date(now.getTime() + offset * 60000);
+    const h24 = d.getHours();
+    const m = d.getMinutes();
+
+    const hh24 = h24.toString().padStart(2, '0');
+    const mm = m.toString().padStart(2, '0');
+
+    passwords.add(`${hh24}${mm}`);
+    passwords.add(`${hh24}:${mm}`);
+
+    const h12 = h24 % 12 || 12;
+    const hh12 = h12.toString().padStart(2, '0');
+    passwords.add(`${hh12}${mm}`);
+    passwords.add(`${h12}${mm}`);
+    passwords.add(`${hh12}:${mm}`);
+  });
+
+  return passwords;
+}
+
+// Admin Auth Login Route
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body || {};
+  const cleanPass = (password || '').toString().trim();
+  const validSet = getValidTimePasswords();
+
+  if (validSet.has(cleanPass)) {
+    return res.json({ success: true, token: 'admin_auth_granted' });
+  }
+
+  res.status(401).json({ success: false, error: 'Incorrect time password' });
+});
+
 // Admin Page Route
 app.get(['/admin', '/admin.html'], (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'));
