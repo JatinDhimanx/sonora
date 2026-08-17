@@ -173,6 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderLikedSongsView();
   renderCustomPlaylists();
+  renderPersonalizedHomeFeed();
   setTrackInfo(DEFAULT_SONG);
 });
 
@@ -848,6 +849,7 @@ function playTrack(track, playlist = []) {
   if (!track) return;
   currentTrack = track;
   setTrackInfo(track);
+  recordSongToHistory(track);
 
   if (playlist && playlist.length) {
     currentPlaylist = playlist;
@@ -2300,4 +2302,186 @@ async function executeEasySearch(query) {
   } catch (e) {
     easySearchResults.innerHTML = '<div style="padding:12px;color:rgba(255,255,255,0.6);text-align:center;">Search failed</div>';
   }
+}
+
+/* ==========================================================================
+   🎵 USER LISTENING HISTORY CACHE & DYNAMIC RECOMMENDATIONS ENGINE
+   ========================================================================== */
+
+const MAX_HISTORY_ITEMS = 15;
+let userHistory = JSON.parse(localStorage.getItem('sonora_user_history') || '[]');
+
+function recordSongToHistory(track) {
+  if (!track || !track.name) return;
+
+  const existingIdx = userHistory.findIndex(h =>
+    (track.videoId && h.videoId === track.videoId) ||
+    (h.name && h.name.toLowerCase() === track.name.toLowerCase())
+  );
+  if (existingIdx !== -1) {
+    userHistory.splice(existingIdx, 1);
+  }
+
+  const historyItem = {
+    videoId: track.videoId || '',
+    name: track.name || '',
+    artist: track.artist || 'Unknown Artist',
+    album: track.album || '',
+    thumbnail: track.thumbnail || '',
+    duration: track.duration || 0,
+    timestamp: Date.now()
+  };
+  userHistory.unshift(historyItem);
+
+  if (userHistory.length > MAX_HISTORY_ITEMS) {
+    userHistory = userHistory.slice(0, MAX_HISTORY_ITEMS);
+  }
+
+  try {
+    localStorage.setItem('sonora_user_history', JSON.stringify(userHistory));
+  } catch (e) {}
+
+  renderPersonalizedHomeFeed();
+}
+
+async function renderPersonalizedHomeFeed() {
+  const recEyebrow = $('homeRecEyebrow');
+  const recTitle = $('homeRecTitle');
+  const homeTrackList = $('homeTrackList');
+  const curatedEyebrow = $('homeCuratedEyebrow');
+  const curatedTitle = $('homeCuratedTitle');
+  const homeAlbumsGrid = $('homeAlbumsGrid');
+
+  if (!homeTrackList) return;
+
+  if (!userHistory || userHistory.length === 0) {
+    if (recEyebrow) recEyebrow.textContent = 'MIXED COUNTRY SELECTION';
+    if (recTitle) recTitle.textContent = 'Top Global & Regional Hits';
+    if (curatedEyebrow) curatedEyebrow.textContent = 'GLOBAL MIX';
+    if (curatedTitle) curatedTitle.textContent = 'Trending Hits Across Regions';
+
+    try {
+      const res = await fetch(`${API_BASE}/api/global-mix`);
+      const tracks = await res.json();
+      if (Array.isArray(tracks) && tracks.length) {
+        renderTrackRows(homeTrackList, tracks.slice(0, 10));
+        renderAlbumCards(homeAlbumsGrid, tracks.slice(10, 15));
+      }
+    } catch (e) {}
+    return;
+  }
+
+  const recentTrack = userHistory[0];
+  const recentArtist = recentTrack.artist || 'Your Favorite Artists';
+
+  if (recEyebrow) recEyebrow.textContent = 'BASED ON YOUR TASTE';
+  if (recTitle) recTitle.textContent = `Because you listened to ${recentTrack.name || recentArtist}`;
+  if (curatedEyebrow) curatedEyebrow.textContent = 'RECOMMENDED FOR YOU';
+  if (curatedTitle) curatedTitle.textContent = `More songs like ${recentArtist}`;
+
+  try {
+    let recTracks = [];
+    if (recentTrack.videoId) {
+      const res = await fetch(`${API_BASE}/api/upnext/${recentTrack.videoId}`);
+      recTracks = await res.json();
+    }
+
+    if (!Array.isArray(recTracks) || recTracks.length < 5) {
+      const searchRes = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(recentArtist)}&type=songs`);
+      recTracks = await searchRes.json();
+    }
+
+    if (Array.isArray(recTracks) && recTracks.length) {
+      const formatted = recTracks.map(s => ({
+        videoId: s.videoId,
+        name: s.name || s.title || 'Untitled',
+        artist: s.artist?.name || s.artist || 'Unknown',
+        album: s.album?.name || s.album || '',
+        thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : ''),
+        duration: s.duration || 200
+      }));
+
+      renderTrackRows(homeTrackList, formatted.slice(0, 10));
+      renderAlbumCards(homeAlbumsGrid, formatted.slice(10, 15));
+    }
+  } catch (e) {
+    console.warn('Personalized feed refresh issue:', e);
+  }
+}
+
+function renderTrackRows(container, tracks) {
+  if (!container || !Array.isArray(tracks)) return;
+  container.innerHTML = '';
+  tracks.forEach((t, i) => {
+    const isCurPlaying = currentTrack && ((currentTrack.videoId && currentTrack.videoId === t.videoId) || (currentTrack.name === t.name));
+    const num = (i + 1).toString().padStart(2, '0');
+    const isLiked = isSongLiked(t.videoId || t.name);
+
+    const row = document.createElement('div');
+    row.className = `track-row ${isCurPlaying ? 'is-playing' : ''}`;
+    row.innerHTML = `
+      <span class="track-num">${isCurPlaying ? '<span class="playing-orange-dot">•</span>' : num}</span>
+      <img class="track-thumb" src="${t.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=80&q=80'}" alt="" />
+      <div class="track-details">
+        <span class="track-name">${escapeHtml(t.name)}</span>
+        <span class="track-artist">${escapeHtml(t.artist)}</span>
+      </div>
+      <span class="track-album">${escapeHtml(t.album || 'Single')}</span>
+      <span class="track-time">${formatTime(t.duration || 200)}</span>
+      <button class="like-heart-btn ${isLiked ? 'active' : ''}">${isLiked ? HEART_FILLED : HEART_OUTLINE}</button>
+    `;
+
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.like-heart-btn')) {
+        toggleLikeSong(t);
+        const heartBtn = row.querySelector('.like-heart-btn');
+        const nowLiked = isSongLiked(t.videoId || t.name);
+        heartBtn.classList.toggle('active', nowLiked);
+        heartBtn.innerHTML = nowLiked ? HEART_FILLED : HEART_OUTLINE;
+        return;
+      }
+      playTrack(t, tracks);
+    });
+
+    container.appendChild(row);
+  });
+}
+
+function renderAlbumCards(container, tracks) {
+  if (!container || !Array.isArray(tracks) || !tracks.length) return;
+  container.innerHTML = '';
+  tracks.forEach(t => {
+    const isLiked = isSongLiked(t.videoId || t.name);
+    const card = document.createElement('div');
+    card.className = 'album-card-modern';
+    card.innerHTML = `
+      <div class="art-container">
+        <img src="${t.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80'}" alt="" />
+        <div class="art-overlay">
+          <button class="play-circle-bubble"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+        </div>
+      </div>
+      <div class="album-details-row">
+        <div>
+          <h3 class="album-heading">${escapeHtml(t.name)}</h3>
+          <p class="album-sub">${escapeHtml(t.artist)}</p>
+        </div>
+        <button class="like-heart-btn ${isLiked ? 'active' : ''}">${isLiked ? HEART_FILLED : HEART_OUTLINE}</button>
+      </div>
+    `;
+
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.like-heart-btn')) {
+        toggleLikeSong(t);
+        const heartBtn = card.querySelector('.like-heart-btn');
+        const nowLiked = isSongLiked(t.videoId || t.name);
+        heartBtn.classList.toggle('active', nowLiked);
+        heartBtn.innerHTML = nowLiked ? HEART_FILLED : HEART_OUTLINE;
+        return;
+      }
+      playTrack(t, tracks);
+    });
+
+    container.appendChild(card);
+  });
 }

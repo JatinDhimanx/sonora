@@ -339,6 +339,38 @@ app.get(
 );
 
 app.get(
+  "/api/global-mix",
+  requireReady,
+  wrap(async (req, res) => {
+    const cacheKey = "global:mix:all";
+    const hit = cacheGet(cacheKey);
+    if (hit !== undefined) return res.json(hit);
+
+    const queries = ["Global Top Hits", "Bollywood Top Hits", "Punjabi Hits", "Billboard Top Songs"];
+    const results = await Promise.allSettled(
+      queries.map(q => ytmusic.searchSongs(q))
+    );
+
+    let combined = [];
+    results.forEach((r) => {
+      if (r.status === "fulfilled" && Array.isArray(r.value)) {
+        const mapped = r.value.slice(0, 6).map(mapSong);
+        combined = combined.concat(mapped);
+      }
+    });
+
+    const shuffled = [];
+    while (combined.length) {
+      const randIdx = Math.floor(Math.random() * combined.length);
+      shuffled.push(combined.splice(randIdx, 1)[0]);
+    }
+
+    cacheSet(cacheKey, shuffled);
+    res.json(shuffled);
+  })
+);
+
+app.get(
   "/api/song/:id",
   requireReady,
   wrap(async (req, res) => {
