@@ -298,7 +298,6 @@ app.get(
 
       const stream = ytdl(videoId, {
         filter: "audioonly",
-        quality: "highestaudio",
         highWaterMark: 1 << 25
       });
 
