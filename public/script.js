@@ -159,8 +159,6 @@ const SILENT_AUDIO_SRC = 'data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEA
 
 document.addEventListener('DOMContentLoaded', () => {
   registerServiceWorker();
-  setupAppInstallation();
-  setupBatteryOptButton();
   setupNavigation();
   setupHistoryNavigation();
   setupSearchEngine();
@@ -2169,9 +2167,6 @@ function syncEasyModeUI() {
 
 function setupEasyModeControls() {
   if (homeEasyModeBtn) homeEasyModeBtn.addEventListener('click', () => toggleEasyMode(true));
-  if (heroEasyModeBtn) heroEasyModeBtn.addEventListener('click', () => toggleEasyMode(true));
-  if (bannerEasyModeBtn) bannerEasyModeBtn.addEventListener('click', () => toggleEasyMode(true));
-  if (sidebarEasyModeBtn) sidebarEasyModeBtn.addEventListener('click', () => toggleEasyMode(true));
   if (easyExitBtn) easyExitBtn.addEventListener('click', () => toggleEasyMode(false));
 
   if (easyPlayBtn) {
