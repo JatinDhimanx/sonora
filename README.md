@@ -3,6 +3,19 @@
 > **A Quiet, Elegant Music Space for Your Desktop & Mobile Web**
 > Full Background Audio Playback | Synced Auto-Scrolling Lyrics | 120Hz Refresh Rate | Apple Music Fullscreen Design
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FJatinDhimanx%2Fsonora)
+
+---
+
+## ⚡ 1-Click Vercel Deployment
+
+Sonora is fully configured for serverless deployment on **Vercel** (`vercel.json` + `api/index.js`).
+
+### How to Host on Vercel:
+1. Go to [Vercel Dashboard](https://vercel.com/dashboard) and click **Add New...** ➔ **Project**.
+2. Import your GitHub repository: **`JatinDhimanx/sonora`**.
+3. Click **Deploy**. Vercel will automatically build the static frontend (`public/`) and set up the Express Serverless API (`api/index.js`)!
+
 ---
 
 ## 🌐 Progressive Web Application (PWA) Installation
@@ -40,6 +53,8 @@ Sonora is a **Native-Grade Progressive Web Application (PWA)**. You can install 
 
 ```
 ytmusic-prototype/
+├── api/
+│   └── index.js         # Vercel Serverless Function API Entrypoint
 ├── backend/
 │   └── server.js        # Express REST API, LRCLIB Synced Lyrics & Audio Stream Proxy
 ├── public/
@@ -49,6 +64,7 @@ ytmusic-prototype/
 │   ├── favicon.svg      # HD Vector App Icon
 │   ├── manifest.json   # PWA Web App Manifest
 │   └── sw.js            # Offline Caching Service Worker
+├── vercel.json          # Vercel Serverless Deployment Configuration
 ├── package.json
 └── README.md
 ```

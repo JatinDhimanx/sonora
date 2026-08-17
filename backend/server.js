@@ -461,7 +461,11 @@ function startServer(port, attemptsLeft = 5) {
   });
 }
 
-startServer(PORT);
+if (require.main === module) {
+  startServer(PORT);
+}
 
 process.on("SIGTERM", () => activeServer?.close(() => process.exit(0)));
 process.on("SIGINT", () => activeServer?.close(() => process.exit(0)));
+
+module.exports = app;
