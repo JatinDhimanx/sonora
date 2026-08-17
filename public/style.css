@@ -2847,3 +2847,564 @@ body.fullscreen-open {
     font-size: 21px;
   }
 }
+
+/* ==========================================================================
+   ✨ EASY MODE FULLSCREEN UI & GLASSY AESTHETICS (100vh x 100vw)
+   ========================================================================== */
+
+.btn-easy-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(224, 93, 56, 0.12);
+  border: 1px solid rgba(224, 93, 56, 0.35);
+  border-radius: 20px;
+  color: #ff8a65;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(10px);
+}
+
+.btn-easy-mode-pill:hover {
+  background: rgba(224, 93, 56, 0.25);
+  border-color: rgba(224, 93, 56, 0.6);
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 4px 16px rgba(224, 93, 56, 0.3);
+  color: #ffffff;
+}
+
+.hero-easy-tag {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  color: #ffab91;
+  padding: 2px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hero-easy-tag:hover {
+  background: rgba(224, 93, 56, 0.2);
+  color: #fff;
+  border-color: rgba(224, 93, 56, 0.5);
+  transform: scale(1.05);
+}
+
+.easy-mode-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  background: #050608;
+  opacity: 1;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.easy-mode-overlay.hidden {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.easy-bg-container {
+  position: absolute;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.easy-bg-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: blur(45px) brightness(0.38) saturate(1.6);
+  transform: scale(1.15);
+  transition: opacity 0.8s ease, transform 10s ease;
+}
+
+.easy-bg-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(10, 11, 16, 0.2) 0%, rgba(5, 6, 9, 0.85) 75%, #050608 100%),
+              linear-gradient(to bottom, rgba(5, 6, 9, 0.6) 0%, transparent 30%, transparent 70%, rgba(5, 6, 9, 0.85) 100%);
+}
+
+.easy-bg-particles {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.5;
+}
+
+.easy-top-bar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 36px;
+  width: 100%;
+}
+
+.easy-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 30px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.easy-badge-sparkle {
+  font-size: 14px;
+}
+
+.easy-badge-text {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.easy-top-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.easy-glass-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(25px) saturate(1.6);
+  -webkit-backdrop-filter: blur(25px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 28px;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.easy-glass-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.45);
+}
+
+.easy-exit-btn {
+  background: rgba(224, 93, 56, 0.18);
+  border-color: rgba(224, 93, 56, 0.35);
+  color: #ffab91;
+}
+
+.easy-exit-btn:hover {
+  background: rgba(224, 93, 56, 0.35);
+  border-color: rgba(224, 93, 56, 0.7);
+  color: #ffffff;
+}
+
+.easy-search-modal {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 90vw);
+  z-index: 50;
+  transition: all 0.3s ease;
+}
+
+.easy-search-card {
+  background: rgba(18, 20, 29, 0.75);
+  backdrop-filter: blur(35px) saturate(2);
+  -webkit-backdrop-filter: blur(35px) saturate(2);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 24px;
+  padding: 16px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.65);
+}
+
+.easy-search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 10px 16px;
+  color: #ffffff;
+}
+
+.easy-search-input-wrap input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.easy-search-input-wrap input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.easy-search-clear {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.easy-search-results {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.easy-search-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.easy-search-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.easy-search-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.easy-search-meta h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.easy-search-meta p {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.easy-center-content {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin: 0 auto;
+  max-width: 650px;
+  width: 90%;
+  flex: 1;
+  padding: 10px 0;
+}
+
+.easy-art-frame {
+  position: relative;
+  width: min(320px, 35vh, 70vw);
+  height: min(320px, 35vh, 70vw);
+  border-radius: 28px;
+  margin-bottom: 24px;
+  transition: transform 0.4s ease;
+}
+
+.easy-art-frame img {
+  width: 100%;
+  height: 100%;
+  border-radius: 28px;
+  object-fit: cover;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  position: relative;
+  z-index: 2;
+}
+
+.easy-art-glow {
+  position: absolute;
+  inset: -12px;
+  border-radius: 36px;
+  background: radial-gradient(circle, rgba(224, 93, 56, 0.45) 0%, transparent 70%);
+  filter: blur(25px);
+  z-index: 1;
+  opacity: 0.7;
+  animation: easyGlowPulse 4s infinite ease-in-out alternate;
+}
+
+@keyframes easyGlowPulse {
+  0% { transform: scale(0.95); opacity: 0.5; }
+  100% { transform: scale(1.08); opacity: 0.85; }
+}
+
+.easy-meta-wrap {
+  margin-bottom: 24px;
+}
+
+.easy-track-title {
+  font-size: min(32px, 5vh);
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+  margin-bottom: 8px;
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+}
+
+.easy-track-artist {
+  font-size: min(17px, 2.5vh);
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 500;
+}
+
+.easy-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 520px;
+}
+
+.easy-time {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  min-width: 38px;
+}
+
+.easy-progress-bar-wrap {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.easy-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #e05d38, #ff8a65);
+  border-radius: 10px;
+}
+
+.easy-seek-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.easy-bottom-bar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0 36px 0;
+  width: 100%;
+}
+
+.easy-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 32px;
+  background: rgba(18, 20, 29, 0.45);
+  backdrop-filter: blur(30px) saturate(1.8);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 40px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+.easy-ctrl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.easy-ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  transform: scale(1.08);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.easy-ctrl-btn.active {
+  color: #e05d38;
+  border-color: rgba(224, 93, 56, 0.5);
+  background: rgba(224, 93, 56, 0.15);
+  box-shadow: 0 0 16px rgba(224, 93, 56, 0.35);
+}
+
+.easy-play-primary {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, #e05d38, #ff7043);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  box-shadow: 0 10px 30px rgba(224, 93, 56, 0.5);
+}
+
+.easy-play-primary:hover {
+  background: linear-gradient(135deg, #ff7043, #ff8a65);
+  transform: scale(1.1);
+  box-shadow: 0 14px 40px rgba(224, 93, 56, 0.7);
+}
+
+@media (max-width: 600px) {
+  .easy-top-bar {
+    padding: 16px 20px;
+  }
+  .easy-badge-text {
+    display: none;
+  }
+  .easy-controls-row {
+    gap: 12px;
+    padding: 10px 20px;
+  }
+  .easy-ctrl-btn {
+    width: 42px;
+    height: 42px;
+  }
+  .easy-play-primary {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* Easy Mode Prominent Top Banner on Home Page */
+.easy-mode-top-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, rgba(224, 93, 56, 0.18) 0%, rgba(20, 24, 34, 0.7) 100%);
+  border: 1px solid rgba(224, 93, 56, 0.4);
+  border-radius: 20px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.easy-banner-glow {
+  position: absolute;
+  top: -50%;
+  left: -20%;
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, rgba(224, 93, 56, 0.3) 0%, transparent 70%);
+  filter: blur(30px);
+  pointer-events: none;
+}
+
+.easy-banner-left {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.easy-banner-sparkle {
+  font-size: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  background: rgba(224, 93, 56, 0.2);
+  border-radius: 14px;
+  border: 1px solid rgba(224, 93, 56, 0.4);
+}
+
+.easy-banner-info h3 {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #ffffff;
+  margin-bottom: 2px;
+}
+
+.easy-banner-info p {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.easy-launch-btn {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 24px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.nav-easy-item {
+  color: #ffab91 !important;
+  background: rgba(224, 93, 56, 0.1) !important;
+  border: 1px solid rgba(224, 93, 56, 0.25) !important;
+  margin-top: 4px;
+}
+
+.nav-easy-item:hover {
+  background: rgba(224, 93, 56, 0.22) !important;
+  color: #ffffff !important;
+}

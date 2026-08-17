@@ -170,6 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLyricsDrawer();
   setupPlaylistsModal();
   setupMediaSession();
+  setupEasyModeControls();
   updateTimeTag();
 
   renderLikedSongsView();
@@ -486,6 +487,7 @@ function setPlayingState(playing) {
   isPlaying = playing;
   if (playBtnIcon) playBtnIcon.innerHTML = playing ? PAUSE_SVG : PLAY_SVG;
   if (fsPlayBtnIcon) fsPlayBtnIcon.innerHTML = playing ? PAUSE_SVG : PLAY_SVG;
+  if (easyPlayIcon) easyPlayIcon.innerHTML = playing ? PAUSE_SVG : PLAY_SVG;
   if (fullscreenPlayer) fullscreenPlayer.classList.toggle('is-playing', playing);
 
   const playerEq = $('playerEqualizer');
@@ -555,6 +557,14 @@ function updateProgress() {
     fsSeekInput.value = cur;
     if (fsProgressFill) fsProgressFill.style.width = `${pct}%`;
     if (fsProgressThumb) fsProgressThumb.style.left = `${pct}%`;
+  }
+
+  if (!isDraggingEasySeek && easySeekInput) {
+    if (easyCurTime) easyCurTime.textContent = formatTime(cur);
+    if (easyDurTime) easyDurTime.textContent = formatTime(dur);
+    easySeekInput.max = dur || 100;
+    easySeekInput.value = cur;
+    if (easyProgressFill) easyProgressFill.style.width = `${pct}%`;
   }
 
   if (fullscreenPlayer && fullscreenPlayer.classList.contains('lyrics-active')) {
@@ -888,6 +898,7 @@ function setTrackInfo(track) {
 
   updateMediaSessionMetadata(track);
   syncFullscreenUI();
+  updateEasyModeTrackInfo(track);
 }
 
 async function playNextTrack() {
@@ -2064,4 +2075,234 @@ function escapeHtml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* ==========================================================================
+   ✨ EASY MODE FULLSCREEN LOGIC & CONTROLS
+   ========================================================================== */
+
+const homeEasyModeBtn = $('homeEasyModeBtn');
+const heroEasyModeBtn = $('heroEasyModeBtn');
+const bannerEasyModeBtn = $('bannerEasyModeBtn');
+const sidebarEasyModeBtn = $('sidebarEasyModeBtn');
+const easyModeOverlay = $('easyModeOverlay');
+const easyBgArt = $('easyBgArt');
+const easyTrackThumb = $('easyTrackThumb');
+const easyTrackTitle = $('easyTrackTitle');
+const easyTrackArtist = $('easyTrackArtist');
+const easyCurTime = $('easyCurTime');
+const easyDurTime = $('easyDurTime');
+const easyProgressFill = $('easyProgressFill');
+const easySeekInput = $('easySeekInput');
+const easyPlayBtn = $('easyPlayBtn');
+const easyPlayIcon = $('easyPlayIcon');
+const easyPrevBtn = $('easyPrevBtn');
+const easyNextBtn = $('easyNextBtn');
+const easyRepeatBtn = $('easyRepeatBtn');
+const easyLikeBtn = $('easyLikeBtn');
+const easyLikeIcon = $('easyLikeIcon');
+const easySearchBtn = $('easySearchBtn');
+const easyExitBtn = $('easyExitBtn');
+const easySearchModal = $('easySearchModal');
+const easySearchInput = $('easySearchInput');
+const easySearchCloseBtn = $('easySearchCloseBtn');
+const easySearchResults = $('easySearchResults');
+
+let isEasyMode = false;
+let isDraggingEasySeek = false;
+
+function toggleEasyMode(enable) {
+  isEasyMode = enable != null ? enable : !isEasyMode;
+  if (easyModeOverlay) {
+    easyModeOverlay.classList.toggle('hidden', !isEasyMode);
+    document.body.classList.toggle('easy-mode-open', isEasyMode);
+  }
+  if (isEasyMode) {
+    const trackToUse = currentTrack || DEFAULT_SONG;
+    updateEasyModeTrackInfo(trackToUse);
+    syncEasyModeUI();
+  }
+}
+
+function updateEasyModeTrackInfo(track) {
+  const trackToUse = track || currentTrack || DEFAULT_SONG;
+  if (easyTrackTitle) easyTrackTitle.textContent = trackToUse.name || 'Unknown Track';
+  if (easyTrackArtist) easyTrackArtist.textContent = trackToUse.artist || 'Sonora';
+
+  const hdArt = upgradeThumbToHD(trackToUse.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80');
+  if (easyBgArt) easyBgArt.src = hdArt;
+  if (easyTrackThumb) easyTrackThumb.src = hdArt;
+
+  const isLiked = isSongLiked(trackToUse.videoId || trackToUse.name);
+  if (easyLikeBtn) {
+    easyLikeBtn.classList.toggle('active', isLiked);
+    if (easyLikeIcon) easyLikeIcon.innerHTML = isLiked ? HEART_FILLED : HEART_OUTLINE;
+  }
+}
+
+function syncEasyModeUI() {
+  const trackToUse = currentTrack || DEFAULT_SONG;
+  if (easyPlayIcon) easyPlayIcon.innerHTML = isPlaying ? PAUSE_SVG : PLAY_SVG;
+  if (easyRepeatBtn) easyRepeatBtn.classList.toggle('active', isRepeat);
+
+  if (ytPlayer && isPlayerReady) {
+    const cur = ytPlayer.getCurrentTime() || 0;
+    const dur = ytPlayer.getDuration() || trackToUse.duration || 0;
+    const pct = dur > 0 ? (cur / dur) * 100 : 0;
+    if (easyCurTime) easyCurTime.textContent = formatTime(cur);
+    if (easyDurTime) easyDurTime.textContent = formatTime(dur);
+    if (easySeekInput) {
+      easySeekInput.max = dur || 100;
+      easySeekInput.value = cur;
+    }
+    if (easyProgressFill) easyProgressFill.style.width = `${pct}%`;
+  } else {
+    if (easyCurTime) easyCurTime.textContent = '0:00';
+    if (easyDurTime) easyDurTime.textContent = formatTime(trackToUse.duration || 0);
+    if (easySeekInput) {
+      easySeekInput.max = trackToUse.duration || 100;
+      easySeekInput.value = 0;
+    }
+    if (easyProgressFill) easyProgressFill.style.width = '0%';
+  }
+}
+
+function setupEasyModeControls() {
+  if (homeEasyModeBtn) homeEasyModeBtn.addEventListener('click', () => toggleEasyMode(true));
+  if (heroEasyModeBtn) heroEasyModeBtn.addEventListener('click', () => toggleEasyMode(true));
+  if (bannerEasyModeBtn) bannerEasyModeBtn.addEventListener('click', () => toggleEasyMode(true));
+  if (sidebarEasyModeBtn) sidebarEasyModeBtn.addEventListener('click', () => toggleEasyMode(true));
+  if (easyExitBtn) easyExitBtn.addEventListener('click', () => toggleEasyMode(false));
+
+  if (easyPlayBtn) {
+    easyPlayBtn.addEventListener('click', () => {
+      if (!ytPlayer || !isPlayerReady) return;
+      const state = ytPlayer.getPlayerState();
+      state === YT.PlayerState.PLAYING ? ytPlayer.pauseVideo() : ytPlayer.playVideo();
+    });
+  }
+
+  if (easyPrevBtn) easyPrevBtn.addEventListener('click', playPrevTrack);
+  if (easyNextBtn) easyNextBtn.addEventListener('click', playNextTrack);
+
+  if (easyRepeatBtn) {
+    easyRepeatBtn.addEventListener('click', () => {
+      isRepeat = !isRepeat;
+      easyRepeatBtn.classList.toggle('active', isRepeat);
+      if (repeatBtn) repeatBtn.classList.toggle('active', isRepeat);
+      if (fsRepeatBtn) fsRepeatBtn.classList.toggle('active', isRepeat);
+      showToast(isRepeat ? 'Repeat on' : 'Repeat off');
+    });
+  }
+
+  if (easyLikeBtn) {
+    easyLikeBtn.addEventListener('click', () => {
+      if (!currentTrack) return;
+      toggleLikeSong(currentTrack);
+      const isLiked = isSongLiked(currentTrack.videoId || currentTrack.name);
+      easyLikeBtn.classList.toggle('active', isLiked);
+      if (easyLikeIcon) easyLikeIcon.innerHTML = isLiked ? HEART_FILLED : HEART_OUTLINE;
+    });
+  }
+
+  if (easySeekInput) {
+    easySeekInput.addEventListener('mousedown', () => { isDraggingEasySeek = true; });
+    easySeekInput.addEventListener('touchstart', () => { isDraggingEasySeek = true; }, { passive: true });
+
+    easySeekInput.addEventListener('input', () => {
+      const val = parseFloat(easySeekInput.value);
+      const max = parseFloat(easySeekInput.max) || 100;
+      const pct = (val / max) * 100;
+      if (easyProgressFill) easyProgressFill.style.width = `${pct}%`;
+      if (easyCurTime) easyCurTime.textContent = formatTime(val);
+    });
+
+    easySeekInput.addEventListener('change', () => {
+      isDraggingEasySeek = false;
+      if (ytPlayer && isPlayerReady) {
+        ytPlayer.seekTo(parseFloat(easySeekInput.value), true);
+      }
+    });
+  }
+
+  if (easySearchBtn) {
+    easySearchBtn.addEventListener('click', () => {
+      if (easySearchModal) {
+        easySearchModal.classList.toggle('hidden');
+        if (!easySearchModal.classList.contains('hidden') && easySearchInput) {
+          easySearchInput.focus();
+        }
+      }
+    });
+  }
+
+  if (easySearchCloseBtn) {
+    easySearchCloseBtn.addEventListener('click', () => {
+      if (easySearchModal) easySearchModal.classList.add('hidden');
+    });
+  }
+
+  let easyDebounceTimer = null;
+  if (easySearchInput) {
+    easySearchInput.addEventListener('input', () => {
+      const query = easySearchInput.value.trim();
+      clearTimeout(easyDebounceTimer);
+      if (!query) {
+        if (easySearchResults) easySearchResults.innerHTML = '';
+        return;
+      }
+      easyDebounceTimer = setTimeout(() => executeEasySearch(query), 300);
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isEasyMode) {
+      if (easySearchModal && !easySearchModal.classList.contains('hidden')) {
+        easySearchModal.classList.add('hidden');
+      } else {
+        toggleEasyMode(false);
+      }
+    }
+  });
+}
+
+async function executeEasySearch(query) {
+  if (!easySearchResults) return;
+  easySearchResults.innerHTML = '<div style="padding:12px;color:rgba(255,255,255,0.6);text-align:center;">Searching...</div>';
+  try {
+    const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    const songs = data.songs || [];
+    if (!songs.length) {
+      easySearchResults.innerHTML = '<div style="padding:12px;color:rgba(255,255,255,0.6);text-align:center;">No results found</div>';
+      return;
+    }
+    easySearchResults.innerHTML = '';
+    songs.slice(0, 6).forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'easy-search-item';
+      item.innerHTML = `
+        <img class="easy-search-thumb" src="${s.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=100&q=80'}" alt="" />
+        <div class="easy-search-meta">
+          <h4>${escapeHtml(s.name || s.title || 'Unknown')}</h4>
+          <p>${escapeHtml(s.artist?.name || s.artist || 'Unknown')}</p>
+        </div>
+      `;
+      item.addEventListener('click', () => {
+        const track = {
+          videoId: s.videoId,
+          name: s.name || s.title,
+          artist: s.artist?.name || s.artist || 'Unknown',
+          album: s.album?.name || '',
+          thumbnail: s.thumbnail,
+          duration: s.duration || 200
+        };
+        playTrack(track, songs);
+        if (easySearchModal) easySearchModal.classList.add('hidden');
+      });
+      easySearchResults.appendChild(item);
+    });
+  } catch (e) {
+    easySearchResults.innerHTML = '<div style="padding:12px;color:rgba(255,255,255,0.6);text-align:center;">Search failed</div>';
+  }
 }
