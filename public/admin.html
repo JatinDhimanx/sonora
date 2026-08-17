@@ -18,6 +18,7 @@
       --text-bright: #ffffff;
       --text-muted: rgba(255, 255, 255, 0.65);
       --badge-green: #22c55e;
+      --badge-red: #ef4444;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,7 +31,7 @@
     }
 
     .admin-container {
-      max-width: 1100px;
+      max-width: 1150px;
       margin: 0 auto;
     }
 
@@ -201,6 +202,34 @@
       font-weight: 500;
     }
 
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .status-badge.active {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .status-badge.blocked {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .action-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     .btn-reset-sm {
       background: rgba(224, 93, 56, 0.18);
       color: #ffab91;
@@ -215,6 +244,40 @@
 
     .btn-reset-sm:hover {
       background: var(--accent-coral);
+      color: #fff;
+    }
+
+    .btn-block-sm {
+      background: rgba(239, 68, 68, 0.18);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-block-sm:hover {
+      background: #ef4444;
+      color: #fff;
+    }
+
+    .btn-unblock-sm {
+      background: rgba(34, 197, 94, 0.18);
+      color: #86efac;
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-unblock-sm:hover {
+      background: #22c55e;
       color: #fff;
     }
 
@@ -233,7 +296,6 @@
       animation: fadeIn 0.3s ease;
     }
 
-    /* Password Login Modal */
     .login-overlay {
       position: fixed;
       inset: 0;
@@ -340,6 +402,10 @@
         <div class="metric-value" id="metricTotalIPs">0</div>
       </div>
       <div class="metric-card">
+        <div class="metric-label">Blocked IP Addresses</div>
+        <div class="metric-value" id="metricBlockedIPs" style="color: #f87171;">0</div>
+      </div>
+      <div class="metric-card">
         <div class="metric-label">System Status</div>
         <div class="metric-value" style="color: #4ade80; font-size: 20px; padding-top: 6px;">Online & Synced</div>
       </div>
@@ -359,12 +425,13 @@
               <th>Browser</th>
               <th>Operating System</th>
               <th>Last Active</th>
-              <th>Action</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="sessionTableBody">
             <tr>
-              <td colspan="5" style="text-align: center; color: var(--text-muted);">Loading active user sessions...</td>
+              <td colspan="6" style="text-align: center; color: var(--text-muted);">Loading active user sessions...</td>
             </tr>
           </tbody>
         </table>
@@ -386,6 +453,7 @@
     }
 
     function timeAgo(ms) {
+      if (!ms) return 'Never';
       const sec = Math.floor((Date.now() - ms) / 1000);
       if (sec < 5) return 'Just now';
       if (sec < 60) return `${sec}s ago`;
@@ -410,10 +478,10 @@
           isAuthenticated = true;
           document.getElementById('loginOverlay').classList.add('hidden');
           loadSessions();
-          setInterval(loadSessions, 4000);
+          setInterval(loadSessions, 2500);
         } else {
           err.classList.remove('hidden');
-          err.textContent = data.error || 'Incorrect time password';
+          err.textContent = data.error || 'Incorrect admin password';
         }
       } catch (e) {
         err.classList.remove('hidden');
@@ -429,25 +497,42 @@
         const sessions = data.sessions || [];
 
         document.getElementById('metricTotalIPs').textContent = data.total || 0;
+        document.getElementById('metricBlockedIPs').textContent = data.blockedTotal || 0;
         const tbody = document.getElementById('sessionTableBody');
 
         if (!sessions.length) {
-          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No active sessions logged yet. Open Sonora on another device/tab!</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No active sessions logged yet. Open Sonora on another device/tab!</td></tr>';
           return;
         }
 
         tbody.innerHTML = '';
         sessions.forEach(s => {
           const tr = document.createElement('tr');
+          const isRecentlyPurged = s.lastResetExecuted && (Date.now() - s.lastResetExecuted < 30000);
+          
+          let purgeBtnLabel = 'Purge Cache & Reload';
+          if (s.resetSignal) purgeBtnLabel = '⏳ Resetting…';
+          else if (isRecentlyPurged) purgeBtnLabel = '✓ Purged Just Now';
+
           tr.innerHTML = `
             <td><span class="ip-code">${s.ip}</span></td>
             <td><span class="browser-badge">🌐 ${s.browser}</span></td>
             <td>${s.os}</td>
             <td>${timeAgo(s.lastActive)}</td>
             <td>
-              <button class="btn-reset-sm" onclick="resetCache('${s.ip}')">
-                ${s.resetSignal ? 'Reset Pending…' : 'Purge Cache & Reload'}
-              </button>
+              <span class="status-badge ${s.isBlocked ? 'blocked' : 'active'}">
+                ${s.isBlocked ? '⛔ Blocked' : '🟢 Active'}
+              </span>
+            </td>
+            <td>
+              <div class="action-group">
+                <button class="btn-reset-sm" onclick="resetCache('${s.ip}')" ${s.resetSignal ? 'disabled' : ''}>
+                  ${purgeBtnLabel}
+                </button>
+                <button class="${s.isBlocked ? 'btn-unblock-sm' : 'btn-block-sm'}" onclick="toggleBlock('${s.ip}')">
+                  ${s.isBlocked ? '✅ Unblock' : '⛔ Block'}
+                </button>
+              </div>
             </td>
           `;
           tbody.appendChild(tr);
@@ -470,6 +555,22 @@
         loadSessions();
       } catch (e) {
         showToast('Reset failed');
+      }
+    }
+
+    async function toggleBlock(ip) {
+      if (!isAuthenticated) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/toggle-block`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ip })
+        });
+        const data = await res.json();
+        showToast(data.message || 'Block status updated');
+        loadSessions();
+      } catch (e) {
+        showToast('Toggle block failed');
       }
     }
 

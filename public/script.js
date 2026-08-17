@@ -2873,6 +2873,11 @@ function setupRemoteCachePurgeListener() {
           return;
         }
 
+        // Notify server immediately that reset confirmation was received
+        try {
+          fetch(`${API_BASE}/api/confirm-reset`, { method: 'POST' });
+        } catch (e) {}
+
         showToast('Admin reset user cache. Reloading as first-time visitor...');
 
         userHistory = [];
@@ -2904,8 +2909,8 @@ function setupRemoteCachePurgeListener() {
 
         setTimeout(() => {
           window.location.replace(window.location.origin + '/?fresh=' + Date.now());
-        }, 600);
+        }, 500);
       }
     } catch (e) {}
-  }, 8000);
+  }, 2500);
 }

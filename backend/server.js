@@ -16,6 +16,7 @@ app.use(express.json());
 // 🛡️ SESSION & IP TRACKING MIDDLEWARE FOR ADMIN DASHBOARD
 // ---------------------------------------------------------------------------
 const activeSessions = new Map();
+const blockedIPs = new Set();
 
 function parseBrowser(ua) {
   if (!ua) return { browser: 'Unknown', os: 'Unknown' };
@@ -37,6 +38,44 @@ function parseBrowser(ua) {
   return { browser, os };
 }
 
+// IP Blocking Enforcement Middleware
+app.use((req, res, next) => {
+  try {
+    const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+    const ip = rawIp.split(',')[0].trim().replace(/^::ffff:/, '');
+
+    if (blockedIPs.has(ip) && !req.path.startsWith('/admin') && !req.path.startsWith('/api/admin')) {
+      return res.status(403).send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Access Restricted — Sonora</title>
+          <style>
+            body { background: #07080a; color: #fff; font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; text-align: center; }
+            .card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 40px 28px; border-radius: 24px; max-width: 420px; backdrop-filter: blur(20px); box-shadow: 0 20px 50px rgba(0,0,0,0.6); }
+            .icon { font-size: 48px; margin-bottom: 16px; }
+            h1 { color: #e05d38; font-size: 22px; font-weight: 800; margin-bottom: 10px; }
+            p { color: rgba(255,255,255,0.65); font-size: 14px; line-height: 1.6; margin: 0; }
+            .ip-code { font-family: monospace; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 6px; color: #60a5fa; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon">⛔</div>
+            <h1>Access Restricted</h1>
+            <p>Your IP address (<span class="ip-code">${ip}</span>) has been blocked by Sonora Administration.</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+  } catch (e) {}
+  next();
+});
+
+// Session Tracking Middleware
 app.use((req, res, next) => {
   try {
     const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
@@ -45,14 +84,15 @@ app.use((req, res, next) => {
 
     if (ip && !req.path.startsWith('/admin') && !req.path.startsWith('/api/admin')) {
       const parsed = parseBrowser(userAgent);
-      const existing = activeSessions.get(ip) || { resetSignal: false };
+      const existing = activeSessions.get(ip) || { resetSignal: false, lastResetExecuted: 0 };
       activeSessions.set(ip, {
         ip,
         browser: parsed.browser,
         os: parsed.os,
         userAgent,
         lastActive: Date.now(),
-        resetSignal: existing.resetSignal || false
+        resetSignal: existing.resetSignal || false,
+        lastResetExecuted: existing.lastResetExecuted || 0
       });
     }
   } catch (e) {}
@@ -89,11 +129,29 @@ app.get(['/admin', '/admin.html'], (req, res) => {
 
 // Admin APIs
 app.get('/api/admin/sessions', (req, res) => {
-  const sessions = Array.from(activeSessions.values()).sort((a, b) => b.lastActive - a.lastActive);
+  const sessions = Array.from(activeSessions.values()).map(s => ({
+    ...s,
+    isBlocked: blockedIPs.has(s.ip)
+  })).sort((a, b) => b.lastActive - a.lastActive);
+
   res.json({
     total: sessions.length,
+    blockedTotal: blockedIPs.size,
     sessions
   });
+});
+
+app.post('/api/admin/toggle-block', (req, res) => {
+  const { ip } = req.body || {};
+  if (!ip) return res.status(400).json({ error: 'IP required' });
+
+  if (blockedIPs.has(ip)) {
+    blockedIPs.delete(ip);
+    return res.json({ success: true, isBlocked: false, message: `IP ${ip} has been unblocked` });
+  } else {
+    blockedIPs.add(ip);
+    return res.json({ success: true, isBlocked: true, message: `IP ${ip} has been blocked` });
+  }
 });
 
 app.post('/api/admin/reset-cache', (req, res) => {
@@ -123,11 +181,22 @@ app.get('/api/check-reset', (req, res) => {
 
   if (session && session.resetSignal) {
     const resetId = session.resetSignal;
-    session.resetSignal = false;
     return res.json({ reset: true, resetId });
   }
 
   res.json({ reset: false });
+});
+
+app.post('/api/confirm-reset', (req, res) => {
+  const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+  const ip = rawIp.split(',')[0].trim().replace(/^::ffff:/, '');
+  const session = activeSessions.get(ip);
+
+  if (session) {
+    session.resetSignal = false;
+    session.lastResetExecuted = Date.now();
+  }
+  res.json({ success: true });
 });
 
 app.use(express.static(path.join(__dirname, "..", "public")));
