@@ -415,6 +415,7 @@ function startServer(port, attemptsLeft = 5) {
 
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
+      try { server.close(); } catch (e) {}
       if (attemptsLeft <= 0) {
         console.error(`Port ${port} is in use and no free port was found nearby.`);
         console.error(`Free it up with: netstat -ano | findstr :${port}  then  taskkill /PID <pid> /F`);
