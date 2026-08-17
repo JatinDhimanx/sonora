@@ -2868,3 +2868,33 @@ function initForYouFeed() {
   // Pre-load a couple of batches so the page never opens empty
   loadMoreForYouTracks().then(() => loadMoreForYouTracks());
 }
+
+/* ==========================================================================
+   🔄 REMOTE ADMIN CACHE PURGE LISTENER
+   Checks /api/check-reset every 8s. If reset: true, purges localStorage,
+   sessionStorage, Service Worker cache and reloads page.
+   ========================================================================== */
+function setupRemoteCachePurgeListener() {
+  setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/check-reset`);
+      const data = await res.json();
+      if (data && data.reset) {
+        showToast('Admin has reset app cache. Reloading...');
+        try { localStorage.clear(); } catch(e) {}
+        try { sessionStorage.clear(); } catch(e) {}
+        if ('caches' in window) {
+          try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+          } catch(e) {}
+        }
+        setTimeout(() => {
+          window.location.reload(true);
+        }, 1200);
+      }
+    } catch(e) {}
+  }, 8000);
+}
+
+setupRemoteCachePurgeListener();

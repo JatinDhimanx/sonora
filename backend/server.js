@@ -10,6 +10,99 @@ const CACHE_TTL = 1000 * 60 * 10;
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// 🛡️ SESSION & IP TRACKING MIDDLEWARE FOR ADMIN DASHBOARD
+// ---------------------------------------------------------------------------
+const activeSessions = new Map();
+
+function parseBrowser(ua) {
+  if (!ua) return { browser: 'Unknown', os: 'Unknown' };
+
+  let os = 'Unknown OS';
+  if (ua.includes('Windows')) os = 'Windows';
+  else if (ua.includes('Macintosh') || ua.includes('Mac OS')) os = 'macOS';
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+  else if (ua.includes('Android')) os = 'Android';
+  else if (ua.includes('Linux')) os = 'Linux';
+
+  let browser = 'Unknown Browser';
+  if (ua.includes('Edg/')) browser = 'Microsoft Edge';
+  else if (ua.includes('Chrome/')) browser = 'Google Chrome';
+  else if (ua.includes('Safari/') && !ua.includes('Chrome/')) browser = 'Apple Safari';
+  else if (ua.includes('Firefox/')) browser = 'Mozilla Firefox';
+  else if (ua.includes('OPR/') || ua.includes('Opera/')) browser = 'Opera';
+
+  return { browser, os };
+}
+
+app.use((req, res, next) => {
+  try {
+    const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+    const ip = rawIp.split(',')[0].trim().replace(/^::ffff:/, '');
+    const userAgent = req.headers['user-agent'] || '';
+
+    if (ip && !req.path.startsWith('/admin') && !req.path.startsWith('/api/admin')) {
+      const parsed = parseBrowser(userAgent);
+      const existing = activeSessions.get(ip) || { resetSignal: false };
+      activeSessions.set(ip, {
+        ip,
+        browser: parsed.browser,
+        os: parsed.os,
+        userAgent,
+        lastActive: Date.now(),
+        resetSignal: existing.resetSignal || false
+      });
+    }
+  } catch (e) {}
+  next();
+});
+
+// Admin Page Route
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'));
+});
+
+// Admin APIs
+app.get('/api/admin/sessions', (req, res) => {
+  const sessions = Array.from(activeSessions.values()).sort((a, b) => b.lastActive - a.lastActive);
+  res.json({
+    total: sessions.length,
+    sessions
+  });
+});
+
+app.post('/api/admin/reset-cache', (req, res) => {
+  const { ip, all } = req.body || {};
+  if (all) {
+    for (const [sIp, s] of activeSessions) {
+      s.resetSignal = true;
+    }
+    return res.json({ success: true, message: 'Reset signal sent to all user sessions' });
+  }
+
+  if (ip && activeSessions.has(ip)) {
+    const session = activeSessions.get(ip);
+    session.resetSignal = true;
+    return res.json({ success: true, message: `Reset signal sent to IP ${ip}` });
+  }
+
+  res.status(400).json({ error: 'Session IP not found' });
+});
+
+app.get('/api/check-reset', (req, res) => {
+  const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+  const ip = rawIp.split(',')[0].trim().replace(/^::ffff:/, '');
+  const session = activeSessions.get(ip);
+
+  if (session && session.resetSignal) {
+    session.resetSignal = false;
+    return res.json({ reset: true });
+  }
+
+  res.json({ reset: false });
+});
+
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 const ytmusic = new YTMusic();

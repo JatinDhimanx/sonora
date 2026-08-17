@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sonora Admin — User Sessions & Cache Reset</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #07080a;
+      --card-bg: rgba(255, 255, 255, 0.05);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --accent-coral: #e05d38;
+      --accent-glow: rgba(224, 93, 56, 0.25);
+      --text-bright: #ffffff;
+      --text-muted: rgba(255, 255, 255, 0.65);
+      --badge-green: #22c55e;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-bright);
+      min-height: 100vh;
+      padding: 30px 20px;
+    }
+
+    .admin-container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-title span {
+      color: var(--accent-coral);
+    }
+
+    .badge-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #22c55e;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      backdrop-filter: blur(20px);
+    }
+
+    .metric-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text-bright);
+    }
+
+    .section-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 24px;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .table-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .btn-coral {
+      background: var(--accent-coral);
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 13.5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 15px var(--accent-glow);
+    }
+
+    .btn-coral:hover {
+      background: #f06a44;
+      transform: translateY(-1px);
+    }
+
+    .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th {
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    td {
+      padding: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 13.5px;
+    }
+
+    tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .ip-code {
+      font-family: monospace;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: #60a5fa;
+    }
+
+    .browser-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+
+    .btn-reset-sm {
+      background: rgba(224, 93, 56, 0.18);
+      color: #ffab91;
+      border: 1px solid rgba(224, 93, 56, 0.35);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-reset-sm:hover {
+      background: var(--accent-coral);
+      color: #fff;
+    }
+
+    .toast-msg {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #16a34a;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13.5px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-container">
+    <div class="header-row">
+      <div class="brand-title">
+        <span>Sonora</span> Admin Dashboard
+      </div>
+      <div class="badge-live">
+        <div class="pulse-dot"></div>
+        Live Session Monitor
+      </div>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Active IP Sessions</div>
+        <div class="metric-value" id="metricTotalIPs">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">System Status</div>
+        <div class="metric-value" style="color: #4ade80; font-size: 20px; padding-top: 6px;">Online & Synced</div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="table-header">
+        <div class="table-title">Connected User Devices</div>
+        <button class="btn-coral" id="resetAllBtn">Reset All User Caches</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>IP Address</th>
+              <th>Browser</th>
+              <th>Operating System</th>
+              <th>Last Active</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="sessionTableBody">
+            <tr>
+              <td colspan="5" style="text-align: center; color: var(--text-muted);">Loading active user sessions...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-msg" id="toastMsg"></div>
+
+  <script>
+    const API_BASE = '';
+
+    function showToast(text) {
+      const t = document.getElementById('toastMsg');
+      t.textContent = text;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 3000);
+    }
+
+    function timeAgo(ms) {
+      const sec = Math.floor((Date.now() - ms) / 1000);
+      if (sec < 5) return 'Just now';
+      if (sec < 60) return `${sec}s ago`;
+      const min = Math.floor(sec / 60);
+      return `${min}m ago`;
+    }
+
+    async function loadSessions() {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/sessions`);
+        const data = await res.json();
+        const sessions = data.sessions || [];
+
+        document.getElementById('metricTotalIPs').textContent = data.total || 0;
+        const tbody = document.getElementById('sessionTableBody');
+
+        if (!sessions.length) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No active sessions logged yet. Open Sonora on another device/tab!</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = '';
+        sessions.forEach(s => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><span class="ip-code">${s.ip}</span></td>
+            <td><span class="browser-badge">🌐 ${s.browser}</span></td>
+            <td>${s.os}</td>
+            <td>${timeAgo(s.lastActive)}</td>
+            <td>
+              <button class="btn-reset-sm" onclick="resetCache('${s.ip}')">
+                ${s.resetSignal ? 'Reset Pending…' : 'Purge Cache & Reload'}
+              </button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error('Session load error:', e);
+      }
+    }
+
+    async function resetCache(ip) {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/reset-cache`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ip })
+        });
+        const data = await res.json();
+        showToast(data.message || 'Cache reset signal sent');
+        loadSessions();
+      } catch (e) {
+        showToast('Reset failed');
+      }
+    }
+
+    document.getElementById('resetAllBtn').addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to reset cache for ALL connected user devices?')) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/reset-cache`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ all: true })
+        });
+        const data = await res.json();
+        showToast(data.message || 'Reset signal sent to all sessions');
+        loadSessions();
+      } catch (e) {
+        showToast('Reset failed');
+      }
+    });
+
+    loadSessions();
+    setInterval(loadSessions, 4000);
+  </script>
+</body>
+</html>
