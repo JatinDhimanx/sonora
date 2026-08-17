@@ -181,12 +181,7 @@ function setupBatteryOptButton() {
   const batteryBtn = $('batteryOptBtn');
   if (batteryBtn) {
     batteryBtn.addEventListener('click', () => {
-      showToast('Opening Battery Optimization Settings... Whitelist Sonora to keep audio playing in background!');
-      if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-        try {
-          window.location.href = 'intent:#Intent;action=android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;end';
-        } catch (e) {}
-      }
+      showToast('To keep audio playing in the background, ensure background playback permissions are enabled in your browser settings.');
     });
   }
 }

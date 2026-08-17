@@ -16,8 +16,3 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
-
-# Android Build Outputs
-android/app/build/
-android/.gradle/
-android/local.properties
