@@ -2340,8 +2340,6 @@ function recordSongToHistory(track) {
   try {
     localStorage.setItem('sonora_user_history', JSON.stringify(userHistory));
   } catch (e) {}
-
-  renderPersonalizedHomeFeed();
 }
 
 async function renderPersonalizedHomeFeed() {
