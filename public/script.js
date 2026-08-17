@@ -2354,6 +2354,7 @@ async function renderPersonalizedHomeFeed() {
 
   if (!homeTrackList) return;
 
+  // FIRST TIME USER: Load instant 0ms global mix
   if (!userHistory || userHistory.length === 0) {
     if (recEyebrow) recEyebrow.textContent = 'MIXED COUNTRY SELECTION';
     if (recTitle) recTitle.textContent = 'Top Global & Regional Hits';
@@ -2365,12 +2366,13 @@ async function renderPersonalizedHomeFeed() {
       const tracks = await res.json();
       if (Array.isArray(tracks) && tracks.length) {
         renderTrackRows(homeTrackList, tracks.slice(0, 10));
-        renderAlbumCards(homeAlbumsGrid, tracks.slice(10, 15));
+        if (homeAlbumsGrid) renderAlbumCards(homeAlbumsGrid, tracks.slice(0, 6));
       }
     } catch (e) {}
     return;
   }
 
+  // RETURNING USER: Immediately show recent history tracks for zero latency
   const recentTrack = userHistory[0];
   const recentArtist = recentTrack.artist || 'Your Favorite Artists';
 
@@ -2379,34 +2381,33 @@ async function renderPersonalizedHomeFeed() {
   if (curatedEyebrow) curatedEyebrow.textContent = 'RECOMMENDED FOR YOU';
   if (curatedTitle) curatedTitle.textContent = `More songs like ${recentArtist}`;
 
-  try {
-    let recTracks = [];
-    if (recentTrack.videoId) {
-      const res = await fetch(`${API_BASE}/api/upnext/${recentTrack.videoId}`);
-      recTracks = await res.json();
-    }
+  // Instant render of user history items
+  renderTrackRows(homeTrackList, userHistory.slice(0, 10));
+  if (homeAlbumsGrid) renderAlbumCards(homeAlbumsGrid, userHistory.slice(0, 6));
 
-    if (!Array.isArray(recTracks) || recTracks.length < 5) {
-      const searchRes = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(recentArtist)}&type=songs`);
-      recTracks = await searchRes.json();
-    }
+  // Asynchronous background fetch for deeper related recommendations
+  (async () => {
+    try {
+      let recTracks = [];
+      if (recentTrack.videoId) {
+        const res = await fetch(`${API_BASE}/api/upnext/${recentTrack.videoId}`);
+        recTracks = await res.json();
+      }
 
-    if (Array.isArray(recTracks) && recTracks.length) {
-      const formatted = recTracks.map(s => ({
-        videoId: s.videoId,
-        name: s.name || s.title || 'Untitled',
-        artist: s.artist?.name || s.artist || 'Unknown',
-        album: s.album?.name || s.album || '',
-        thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : ''),
-        duration: s.duration || 200
-      }));
-
-      renderTrackRows(homeTrackList, formatted.slice(0, 10));
-      renderAlbumCards(homeAlbumsGrid, formatted.slice(10, 15));
-    }
-  } catch (e) {
-    console.warn('Personalized feed refresh issue:', e);
-  }
+      if (Array.isArray(recTracks) && recTracks.length >= 4) {
+        const formatted = recTracks.map(s => ({
+          videoId: s.videoId,
+          name: s.name || s.title || 'Untitled',
+          artist: s.artist?.name || s.artist || 'Unknown',
+          album: s.album?.name || s.album || '',
+          thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : ''),
+          duration: s.duration || 200
+        }));
+        renderTrackRows(homeTrackList, formatted.slice(0, 10));
+        if (homeAlbumsGrid) renderAlbumCards(homeAlbumsGrid, formatted.slice(0, 6));
+      }
+    } catch (e) {}
+  })();
 }
 
 function renderTrackRows(container, tracks) {

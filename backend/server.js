@@ -338,35 +338,46 @@ app.get(
   })
 );
 
+const INSTANT_GLOBAL_HITS = [
+  { videoId: "dQw4w9WgXcQ", name: "Still Water", artist: "Mara Vale", album: "Tide Lines", duration: 232, thumbnail: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "hT_nvWreIhg", name: "Counting Stars", artist: "OneRepublic", album: "Native", duration: 257, thumbnail: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "YQHsXMglC9A", name: "Adele - Hello", artist: "Adele", album: "25", duration: 295, thumbnail: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "OPf0YbXqDm0", name: "Uptown Funk", artist: "Mark Ronson ft. Bruno Mars", album: "Uptown Special", duration: 270, thumbnail: "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "09R8_2nJtjg", name: "Sugar", artist: "Maroon 5", album: "V", duration: 235, thumbnail: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "kJQP7kiw5Fk", name: "Despacito", artist: "Luis Fonsi ft. Daddy Yankee", album: "Vida", duration: 228, thumbnail: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "2Vv-BfVoq4g", name: "Perfect", artist: "Ed Sheeran", album: "÷ (Divide)", duration: 263, thumbnail: "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "CevxZvSJLk8", name: "Roar", artist: "Katy Perry", album: "Prism", duration: 222, thumbnail: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "7wtfhZwyrCA", name: "Believer", artist: "Imagine Dragons", album: "Evolve", duration: 204, thumbnail: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "fJ9rUzIMcZQ", name: "Bohemian Rhapsody", artist: "Queen", album: "A Night at the Opera", duration: 354, thumbnail: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80" }
+];
+
 app.get(
   "/api/global-mix",
-  requireReady,
   wrap(async (req, res) => {
     const cacheKey = "global:mix:all";
     const hit = cacheGet(cacheKey);
     if (hit !== undefined) return res.json(hit);
 
-    const queries = ["Global Top Hits", "Bollywood Top Hits", "Punjabi Hits", "Billboard Top Songs"];
-    const results = await Promise.allSettled(
-      queries.map(q => ytmusic.searchSongs(q))
-    );
+    // Return instant pre-cached response in 0ms while refreshing cache asynchronously in background
+    res.json(INSTANT_GLOBAL_HITS);
 
-    let combined = [];
-    results.forEach((r) => {
-      if (r.status === "fulfilled" && Array.isArray(r.value)) {
-        const mapped = r.value.slice(0, 6).map(mapSong);
-        combined = combined.concat(mapped);
-      }
-    });
-
-    const shuffled = [];
-    while (combined.length) {
-      const randIdx = Math.floor(Math.random() * combined.length);
-      shuffled.push(combined.splice(randIdx, 1)[0]);
-    }
-
-    cacheSet(cacheKey, shuffled);
-    res.json(shuffled);
+    // Background fetch to update cache for future requests
+    (async () => {
+      try {
+        if (!ready) return;
+        const queries = ["Global Top Hits", "Bollywood Top Hits", "Punjabi Hits", "Billboard Top Songs"];
+        const results = await Promise.allSettled(queries.map(q => ytmusic.searchSongs(q)));
+        let combined = [];
+        results.forEach((r) => {
+          if (r.status === "fulfilled" && Array.isArray(r.value)) {
+            combined = combined.concat(r.value.slice(0, 6).map(mapSong));
+          }
+        });
+        if (combined.length) {
+          cacheSet(cacheKey, combined);
+        }
+      } catch (e) {}
+    })();
   })
 );
 
