@@ -807,6 +807,70 @@ input {
   font-weight: 600;
 }
 
+.recent-searches-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.recent-searches-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-right: 2px;
+}
+
+.recent-search-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 8px 6px 14px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.recent-search-chip:hover {
+  color: var(--text-main);
+  background: var(--bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.recent-search-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.recent-search-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.recent-search-remove:hover {
+  background: rgba(224, 93, 56, 0.18);
+  color: var(--accent-coral);
+}
+
 .search-browse-state,
 .search-results-wrapper {
   display: flex;
@@ -1076,8 +1140,9 @@ input {
 .albums-grid-modern,
 .albums-grid-5 {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
+  width: 100%;
 }
 
 .album-card,
@@ -1086,6 +1151,8 @@ input {
   flex-direction: column;
   gap: 10px;
   cursor: pointer;
+  min-width: 0;
+  width: 100%;
 }
 
 .album-art-wrap,
@@ -1101,9 +1168,11 @@ input {
 
 .album-cover-img,
 .art-container img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
   transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -1154,18 +1223,29 @@ input {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .album-details-row {
   flex-direction: row;
   align-items: flex-start;
   justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.album-details-row > div {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .album-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .album-name,
@@ -1176,14 +1256,20 @@ input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: block;
+  width: 100%;
 }
 
 .album-artist,
 .album-sub {
   font-size: 11.5px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  width: 100%;
 }
-
 .like-heart-btn {
   color: var(--text-dim);
   display: flex;
@@ -1240,10 +1326,15 @@ input {
 }
 
 .track-thumb {
-  width: 38px;
-  height: 38px;
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  max-width: 38px;
+  max-height: 38px;
   border-radius: 8px;
   object-fit: cover;
+  object-position: center;
   flex-shrink: 0;
   background: var(--bg-card);
 }
@@ -1254,6 +1345,7 @@ input {
   gap: 8px;
   padding-left: 10px;
   overflow: hidden;
+  min-width: 0;
 }
 
 .track-name {
@@ -1261,12 +1353,18 @@ input {
   font-weight: 600;
   color: var(--text-main);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .track-artist {
   font-size: 12px;
   color: var(--text-muted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .track-album {
@@ -2626,6 +2724,8 @@ body.fullscreen-open {
   }
   .search-filter-pills::-webkit-scrollbar { display: none; }
   .chip-btn { white-space: nowrap; padding: 5px 12px; font-size: 11.5px; flex-shrink: 0; }
+  .recent-search-chip { padding: 5px 6px 5px 12px; font-size: 11.5px; }
+  .recent-search-text { max-width: 110px; }
 
   .top-result-card { padding: 10px 12px; gap: 10px; border-radius: 12px; }
   .top-result-thumb { width: 48px; height: 48px; border-radius: 8px; }

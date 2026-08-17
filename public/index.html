@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=1.1" />
 </head>
 <body>
 
@@ -420,12 +420,14 @@
             <button class="chip-btn" data-filter="artists">Artists</button>
             <button class="chip-btn" data-filter="playlists">Playlists</button>
           </div>
+
+          <div class="recent-searches-row hidden" id="recentSearchesRow"></div>
         </div>
 
         <div class="search-browse-state" id="searchBrowseState">
           <section class="content-section">
             <div class="section-header">
-              <h2 class="section-title">Songs</h2>
+              <h2 class="section-title" id="searchBrowseSongsTitle">Songs</h2>
               <a href="#" class="section-link see-all-songs">See all &rsaquo;</a>
             </div>
             <div class="track-list" id="searchBrowseSongsList">
@@ -493,10 +495,10 @@
 
           <section class="content-section">
             <div class="section-header">
-              <h2 class="section-title">Albums</h2>
+              <h2 class="section-title" id="searchBrowseAlbumsTitle">Albums</h2>
               <a href="#" class="section-link see-all-albums">See all &rsaquo;</a>
             </div>
-            <div class="albums-grid-5">
+            <div class="albums-grid-5" id="searchBrowseAlbumsGrid">
               <div class="album-card" data-query="Tide Lines Mara Vale">
                 <div class="album-art-wrap">
                   <img class="album-cover-img" src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=300&q=80" alt="Tide Lines" />
@@ -1120,6 +1122,6 @@
 <div class="toast-notification" id="toast"></div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
-<script src="script.js"></script>
+<script src="script.js?v=1.1"></script>
 </body>
 </html>

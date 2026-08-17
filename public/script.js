@@ -124,6 +124,10 @@ const PLAY_SVG = '<path d="M8 5v14l11-7z"/>';
 const PAUSE_SVG = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
 const HEART_FILLED = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#E05D38" stroke="#E05D38" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
 const HEART_OUTLINE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+// Single default thumbnail used everywhere so every suggestion row/card falls
+// back to the exact same square image size instead of a broken-icon or a
+// differently-shaped placeholder.
+const FALLBACK_THUMB = 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80';
 
 let ytPlayer = null;
 let isPlayerReady = false;
@@ -142,6 +146,10 @@ let isRepeat = false;
 let currentFilter = 'all';
 let likedSongs = JSON.parse(localStorage.getItem('sonora_liked_songs') || '[]');
 let customPlaylists = JSON.parse(localStorage.getItem('sonora_playlists') || '[]');
+// Cache of whatever the home page is currently recommending, so the Search
+// page's default (empty-query) state can mirror the exact same suggestions
+// instead of duplicating fetch logic or showing something different.
+let lastRecommendedTracks = [];
 let viewStack = ['home'];
 let viewStackIndex = 0;
 
@@ -174,6 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderLikedSongsView();
   renderCustomPlaylists();
   renderPersonalizedHomeFeed();
+  renderRecentSearches();
   setTrackInfo(DEFAULT_SONG);
 });
 
@@ -313,6 +322,8 @@ function switchView(viewName, pushToHistory = true) {
     renderLibraryView('songs');
   } else if (viewName === 'playlists') {
     renderCustomPlaylists();
+  } else if (viewName === 'made-for-you') {
+    initForYouFeed();
   }
 }
 
@@ -582,9 +593,19 @@ function updateProgress() {
 }
 
 function formatTime(seconds) {
-  if (isNaN(seconds) || seconds < 0) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
+  if (!seconds || seconds === '0:00') return '';
+
+  // Agar backend se already "3:45" string aayi ho
+  if (typeof seconds === 'string' && seconds.includes(':')) {
+    return seconds;
+  }
+
+  const sec = typeof seconds === 'string' ? parseInt(seconds, 10) : Number(seconds);
+
+  if (isNaN(sec) || sec <= 0) return '';
+
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
@@ -777,14 +798,16 @@ function setupFullscreenPlayer() {
 }
 
 function upgradeThumbToHD(url) {
-  if (!url) return '';
+  if (!url) return FALLBACK_THUMB;
+  
+  // Google User Content / YT Music sizing
   let hd = url.replace(/=w\d+-h\d+/, '=w512-h512')
-             .replace(/=s\d+/, '=s512')
-             .replace(/=w\d+/, '=w512');
+              .replace(/=s\d+/, '=s512')
+              .replace(/=w\d+/, '=w512');
+              
+  // YouTube standard images (hqdefault is 100% reliable)
   if (hd.includes('ytimg.com')) {
-    hd = hd.replace('/default.jpg', '/hqdefault.jpg')
-           .replace('/sddefault.jpg', '/maxresdefault.jpg')
-           .replace('/hqdefault.jpg', '/maxresdefault.jpg');
+    hd = hd.replace('/default.jpg', '/hqdefault.jpg');
   }
   return hd;
 }
@@ -1251,10 +1274,13 @@ function showSearchBrowseState() {
   if (searchBrowseState) searchBrowseState.classList.remove('hidden');
   if (searchResultsWrapper) searchResultsWrapper.classList.add('hidden');
   if (searchDetailView) searchDetailView.classList.add('hidden');
+  renderSearchBrowseSuggestions();
+  renderRecentSearches();
 }
 
 async function executeSearch(query, filter = 'all') {
   switchView('search', false);
+  addRecentSearch(query);
   if (searchBrowseState) searchBrowseState.classList.add('hidden');
   if (searchDetailView) searchDetailView.classList.add('hidden');
   if (searchResultsWrapper) searchResultsWrapper.classList.remove('hidden');
@@ -1660,17 +1686,30 @@ function renderDetailTracks(songs) {
 }
 
 async function fetchAndPlaySearch(query) {
-  const q = (query || '').trim();
+  let q = (query || '').trim();
   if (!q) return;
+
+  // Brackets, quotes aur special characters clean karein taaki search fail na ho
+  q = q.replace(/[\(\[\{].*?[\)\]\}]/g, '').replace(/["']/g, '').trim();
+
   try {
     const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}&type=songs`);
     const data = await res.json();
-    if (Array.isArray(data) && data.length) {
-      playTrack(data[0], data);
+    const songs = Array.isArray(data) ? data : (data.songs || []);
+    
+    if (songs && songs.length) {
+      const target = songs[0];
+      // Normalize videoId
+      const videoId = target.videoId || (typeof target.id === 'object' ? target.id.videoId : target.id);
+      playTrack({
+        ...target,
+        videoId: videoId
+      }, songs);
     } else {
       showToast(`No results for "${q}"`);
     }
   } catch (e) {
+    console.error('Play search error:', e);
     showToast('Search failed');
   }
 }
@@ -2311,6 +2350,72 @@ async function executeEasySearch(query) {
 const MAX_HISTORY_ITEMS = 15;
 let userHistory = JSON.parse(localStorage.getItem('sonora_user_history') || '[]');
 
+const MAX_RECENT_SEARCHES = 10;
+let recentSearches = JSON.parse(localStorage.getItem('sonora_recent_searches') || '[]');
+
+function addRecentSearch(query) {
+  const q = (query || '').trim();
+  if (!q) return;
+  recentSearches = recentSearches.filter(s => s.toLowerCase() !== q.toLowerCase());
+  recentSearches.unshift(q);
+  if (recentSearches.length > MAX_RECENT_SEARCHES) {
+    recentSearches = recentSearches.slice(0, MAX_RECENT_SEARCHES);
+  }
+  try {
+    localStorage.setItem('sonora_recent_searches', JSON.stringify(recentSearches));
+  } catch (e) {}
+  renderRecentSearches();
+}
+
+function removeRecentSearch(query) {
+  recentSearches = recentSearches.filter(s => s !== query);
+  try {
+    localStorage.setItem('sonora_recent_searches', JSON.stringify(recentSearches));
+  } catch (e) {}
+  renderRecentSearches();
+}
+
+function renderRecentSearches() {
+  const row = $('recentSearchesRow');
+  if (!row) return;
+
+  if (!recentSearches.length) {
+    row.classList.add('hidden');
+    row.innerHTML = '';
+    return;
+  }
+
+  row.classList.remove('hidden');
+  row.innerHTML = '';
+
+  const label = document.createElement('span');
+  label.className = 'recent-searches-label';
+  label.textContent = 'Recent';
+  row.appendChild(label);
+
+  recentSearches.forEach(q => {
+    const chip = document.createElement('div');
+    chip.className = 'recent-search-chip';
+    chip.innerHTML = `
+      <span class="recent-search-text">${escapeHtml(q)}</span>
+      <button class="recent-search-remove" title="Remove from recent searches">&times;</button>
+    `;
+
+    chip.querySelector('.recent-search-text').addEventListener('click', () => {
+      if (pageSearchInput) pageSearchInput.value = q;
+      if (searchInput) searchInput.value = q;
+      executeSearch(q, currentFilter);
+    });
+
+    chip.querySelector('.recent-search-remove').addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeRecentSearch(q);
+    });
+
+    row.appendChild(chip);
+  });
+}
+
 function recordSongToHistory(track) {
   if (!track || !track.name) return;
 
@@ -2340,6 +2445,13 @@ function recordSongToHistory(track) {
   try {
     localStorage.setItem('sonora_user_history', JSON.stringify(userHistory));
   } catch (e) {}
+
+  // If the "For You" feed is already open, feed it fresh signal immediately
+  // so the scroll feed adapts to what's being played right now, not just
+  // what was in localStorage when the page first loaded.
+  if (typeof forYouFeed !== 'undefined' && forYouFeed.initialized) {
+    forYouFeed.seedPool.unshift(historyItem);
+  }
 }
 
 async function renderPersonalizedHomeFeed() {
@@ -2352,7 +2464,7 @@ async function renderPersonalizedHomeFeed() {
 
   if (!homeTrackList) return;
 
-  // FIRST TIME USER: Load instant 0ms global mix
+  // 1. FIRST TIME USER: Load instant global mix
   if (!userHistory || userHistory.length === 0) {
     if (recEyebrow) recEyebrow.textContent = 'MIXED COUNTRY SELECTION';
     if (recTitle) recTitle.textContent = 'Top Global & Regional Hits';
@@ -2361,51 +2473,132 @@ async function renderPersonalizedHomeFeed() {
 
     try {
       const res = await fetch(`${API_BASE}/api/global-mix`);
-      const tracks = await res.json();
-      if (Array.isArray(tracks) && tracks.length) {
-        renderTrackRows(homeTrackList, tracks.slice(0, 10));
-        if (homeAlbumsGrid) renderAlbumCards(homeAlbumsGrid, tracks.slice(0, 6));
+      const data = await res.json();
+      const rawTracks = Array.isArray(data) ? data : (data.tracks || data.songs || []);
+      
+      if (rawTracks.length) {
+        const formatted = rawTracks.map(s => ({
+          videoId: s.videoId || (typeof s.id === 'object' ? s.id.videoId : s.id) || '',
+          name: s.name || s.title || 'Untitled Track',
+          artist: s.artist?.name || s.artist || 'Various Artists',
+          album: s.album?.name || s.album || 'Single',
+          thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB),
+          duration: s.duration || 200
+        }));
+
+        renderTrackRows(homeTrackList, formatted.slice(0, 10));
+        if (homeAlbumsGrid) renderAlbumCards(homeAlbumsGrid, formatted.slice(0, 6));
+        lastRecommendedTracks = formatted.slice(0, 10);
+        renderSearchBrowseSuggestions();
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Failed to load global mix:', e);
+    }
     return;
   }
 
-  // RETURNING USER: Immediately show recent history tracks for zero latency
-  const recentTrack = userHistory[0];
-  const recentArtist = recentTrack.artist || 'Your Favorite Artists';
+  // 2. RETURNING USER: Taste Pool (Liked songs + History)
+  const tastePool = [];
+  const tasteSeen = new Set();
+  
+  [...likedSongs, ...userHistory].forEach(t => {
+    const key = t.videoId || t.name;
+    if (key && !tasteSeen.has(key)) {
+      tasteSeen.add(key);
+      tastePool.push(t);
+    }
+  });
+
+  const seedTrack = tastePool[Math.floor(Math.random() * Math.min(tastePool.length, 6))] || userHistory[0];
+  
+  // Clean Artist Name Check (Avoids "More songs like Unknown")
+  const validArtist = (seedTrack.artist && 
+                       seedTrack.artist.toLowerCase() !== 'unknown' && 
+                       seedTrack.artist.toLowerCase() !== 'unknown artist') 
+                      ? seedTrack.artist 
+                      : null;
 
   if (recEyebrow) recEyebrow.textContent = 'BASED ON YOUR TASTE';
-  if (recTitle) recTitle.textContent = `Because you listened to ${recentTrack.name || recentArtist}`;
+  if (recTitle) {
+    recTitle.textContent = seedTrack.name 
+      ? `Because you listened to ${seedTrack.name}` 
+      : 'Top Picks For You';
+  }
+
   if (curatedEyebrow) curatedEyebrow.textContent = 'RECOMMENDED FOR YOU';
-  if (curatedTitle) curatedTitle.textContent = `More songs like ${recentArtist}`;
+  if (curatedTitle) {
+    curatedTitle.textContent = validArtist 
+      ? `More songs like ${validArtist}` 
+      : 'Fresh Recommendations For You';
+  }
 
-  // Instant render of user history items
-  renderTrackRows(homeTrackList, userHistory.slice(0, 10));
-  if (homeAlbumsGrid) renderAlbumCards(homeAlbumsGrid, userHistory.slice(0, 6));
+  // Instant local cache render
+  const shuffledPool = shuffleArray(tastePool.slice(0, 15));
+  renderTrackRows(homeTrackList, shuffledPool.slice(0, 10));
+  if (homeAlbumsGrid) renderAlbumCards(homeAlbumsGrid, shuffledPool.slice(0, 6));
+  lastRecommendedTracks = shuffledPool.slice(0, 10);
+  renderSearchBrowseSuggestions();
 
-  // Asynchronous background fetch for deeper related recommendations
+  // 3. Dynamic background fetch for related tracks
   (async () => {
     try {
       let recTracks = [];
-      if (recentTrack.videoId) {
-        const res = await fetch(`${API_BASE}/api/upnext/${recentTrack.videoId}`);
+      if (seedTrack.videoId) {
+        const res = await fetch(`${API_BASE}/api/upnext/${seedTrack.videoId}`);
         recTracks = await res.json();
       }
 
-      if (Array.isArray(recTracks) && recTracks.length >= 4) {
-        const formatted = recTracks.map(s => ({
-          videoId: s.videoId,
-          name: s.name || s.title || 'Untitled',
-          artist: s.artist?.name || s.artist || 'Unknown',
-          album: s.album?.name || s.album || '',
-          thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : ''),
+      const tracksList = Array.isArray(recTracks) ? recTracks : (recTracks.tracks || recTracks.songs || []);
+
+      if (tracksList.length >= 4) {
+        const formatted = tracksList.map(s => ({
+          videoId: s.videoId || (typeof s.id === 'object' ? s.id.videoId : s.id) || '',
+          name: s.name || s.title || 'Untitled Track',
+          artist: s.artist?.name || s.artist || 'Various Artists',
+          album: s.album?.name || s.album || 'Single',
+          thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB),
           duration: s.duration || 200
         }));
+
         renderTrackRows(homeTrackList, formatted.slice(0, 10));
         if (homeAlbumsGrid) renderAlbumCards(homeAlbumsGrid, formatted.slice(0, 6));
+        lastRecommendedTracks = formatted.slice(0, 10);
+        renderSearchBrowseSuggestions();
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Background recommendations fetch failed:', e);
+    }
   })();
+}
+
+async function renderSearchBrowseSuggestions() {
+  const songsList = $('searchBrowseSongsList');
+  const albumsGrid = $('searchBrowseAlbumsGrid');
+  const songsTitle = $('searchBrowseSongsTitle');
+  const albumsTitle = $('searchBrowseAlbumsTitle');
+  if (!songsList) return;
+
+  // Reuse whatever the home feed already resolved — same suggestions,
+  // no duplicate network calls, and both pages always stay in sync.
+  if (lastRecommendedTracks.length) {
+    if (songsTitle) songsTitle.textContent = userHistory.length ? 'Recommended for you' : 'Songs';
+    if (albumsTitle) albumsTitle.textContent = userHistory.length ? 'Picked for you' : 'Albums';
+    renderTrackRows(songsList, lastRecommendedTracks);
+    if (albumsGrid) renderAlbumCards(albumsGrid, lastRecommendedTracks.slice(0, 5));
+    return;
+  }
+
+  // Home feed hasn't resolved yet (e.g. user opened Search first) — fetch
+  // something reasonable directly so the page is never stuck on static
+  // placeholder content.
+  try {
+    const res = await fetch(`${API_BASE}/api/global-mix`);
+    const tracks = await res.json();
+    if (Array.isArray(tracks) && tracks.length) {
+      renderTrackRows(songsList, tracks.slice(0, 10));
+      if (albumsGrid) renderAlbumCards(albumsGrid, tracks.slice(0, 5));
+    }
+  } catch (e) {}
 }
 
 function renderTrackRows(container, tracks) {
@@ -2420,13 +2613,13 @@ function renderTrackRows(container, tracks) {
     row.className = `track-row ${isCurPlaying ? 'is-playing' : ''}`;
     row.innerHTML = `
       <span class="track-num">${isCurPlaying ? '<span class="playing-orange-dot">•</span>' : num}</span>
-      <img class="track-thumb" src="${t.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=80&q=80'}" alt="" />
+      <img class="track-thumb" width="38" height="38" src="${t.thumbnail || FALLBACK_THUMB}" alt="" onerror="this.onerror=null;this.src='${FALLBACK_THUMB}';" />
       <div class="track-details">
         <span class="track-name">${escapeHtml(t.name)}</span>
         <span class="track-artist">${escapeHtml(t.artist)}</span>
       </div>
       <span class="track-album">${escapeHtml(t.album || 'Single')}</span>
-      <span class="track-time">${formatTime(t.duration || 200)}</span>
+      <span class="track-time">${formatTime(t.duration || t.duration_seconds || t.length)}</span>
       <button class="like-heart-btn ${isLiked ? 'active' : ''}">${isLiked ? HEART_FILLED : HEART_OUTLINE}</button>
     `;
 
@@ -2455,7 +2648,7 @@ function renderAlbumCards(container, tracks) {
     card.className = 'album-card-modern';
     card.innerHTML = `
       <div class="art-container">
-        <img src="${t.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80'}" alt="" />
+        <img width="400" height="400" src="${t.thumbnail || FALLBACK_THUMB}" alt="" onerror="this.onerror=null;this.src='${FALLBACK_THUMB}';" />
         <div class="art-overlay">
           <button class="play-circle-bubble"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
         </div>
@@ -2483,4 +2676,172 @@ function renderAlbumCards(container, tracks) {
 
     container.appendChild(card);
   });
+}
+
+/* ==========================================================================
+   🔁 "MADE FOR YOU" — INFINITE PERSONALIZED SCROLL FEED
+   Blends listening history + liked songs into a seed pool, then keeps
+   fetching related tracks as the user scrolls down the page (reels-style).
+   ========================================================================== */
+
+function shuffleArray(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+const forYouFeed = {
+  initialized: false,
+  loading: false,
+  exhausted: false,
+  seedPool: [],
+  seedIndex: 0,
+  shownIds: new Set(),
+  observer: null
+};
+
+function buildForYouSeedPool() {
+  const pool = [];
+  const seen = new Set();
+  // Liked songs are the strongest taste signal, recent history keeps it fresh
+  [...likedSongs, ...userHistory].forEach(t => {
+    const key = t.videoId || t.name;
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      pool.push(t);
+    }
+  });
+  return shuffleArray(pool);
+}
+
+function appendTrackRows(container, tracks) {
+  if (!container || !Array.isArray(tracks) || !tracks.length) return;
+  tracks.forEach(t => {
+    const key = t.videoId || t.name;
+    if (!key || forYouFeed.shownIds.has(key)) return;
+    forYouFeed.shownIds.add(key);
+
+    const isCurPlaying = currentTrack && ((currentTrack.videoId && currentTrack.videoId === t.videoId) || (currentTrack.name === t.name));
+    const isLiked = isSongLiked(t.videoId || t.name);
+    const num = forYouFeed.shownIds.size.toString().padStart(2, '0');
+
+    const row = document.createElement('div');
+    row.className = `track-row ${isCurPlaying ? 'is-playing' : ''}`;
+    row.innerHTML = `
+      <span class="track-num">${isCurPlaying ? '<span class="playing-orange-dot">•</span>' : num}</span>
+      <img class="track-thumb" width="38" height="38" src="${t.thumbnail || FALLBACK_THUMB}" alt="" onerror="this.onerror=null;this.src='${FALLBACK_THUMB}';" />
+      <div class="track-details">
+        <span class="track-name">${escapeHtml(t.name)}</span>
+        <span class="track-artist">${escapeHtml(t.artist)}</span>
+      </div>
+      <span class="track-album">${escapeHtml(t.album || 'Single')}</span>
+      <span class="track-time">${formatTime(t.duration || 200)}</span>
+      <button class="like-heart-btn ${isLiked ? 'active' : ''}">${isLiked ? HEART_FILLED : HEART_OUTLINE}</button>
+    `;
+
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.like-heart-btn')) {
+        toggleLikeSong(t);
+        const heartBtn = row.querySelector('.like-heart-btn');
+        const nowLiked = isSongLiked(t.videoId || t.name);
+        heartBtn.classList.toggle('active', nowLiked);
+        heartBtn.innerHTML = nowLiked ? HEART_FILLED : HEART_OUTLINE;
+        // A fresh like instantly strengthens the next scroll batches
+        if (nowLiked) forYouFeed.seedPool.unshift(t);
+        return;
+      }
+      playTrack(t, tracks);
+    });
+
+    container.appendChild(row);
+  });
+}
+
+async function loadMoreForYouTracks() {
+  if (forYouFeed.loading || forYouFeed.exhausted) return;
+  const container = $('madeForYouList');
+  if (!container) return;
+
+  forYouFeed.loading = true;
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'for-you-loading';
+  loadingEl.textContent = 'Finding more for you…';
+  loadingEl.style.cssText = 'padding:20px 0;text-align:center;color:rgba(255,255,255,0.5);font-size:13px;';
+  container.appendChild(loadingEl);
+
+  try {
+    let batch = [];
+
+    if (forYouFeed.seedPool.length) {
+      const seed = forYouFeed.seedPool[forYouFeed.seedIndex % forYouFeed.seedPool.length];
+      forYouFeed.seedIndex++;
+      if (seed && seed.videoId) {
+        const res = await fetch(`${API_BASE}/api/upnext/${seed.videoId}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          batch = data.map(s => ({
+            videoId: s.videoId,
+            name: s.name || s.title || 'Untitled',
+            artist: s.artist?.name || s.artist || 'Unknown',
+            album: s.album?.name || s.album || '',
+            thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : ''),
+            duration: s.duration || 200
+          }));
+        }
+      }
+    }
+
+    // Top up with the global mix if the seed ran dry (new users, or a seed
+    // with few related tracks) so the feed never feels like it stalls.
+    if (batch.length < 6) {
+      const res = await fetch(`${API_BASE}/api/global-mix`);
+      const globalTracks = await res.json();
+      if (Array.isArray(globalTracks)) {
+        batch = batch.concat(shuffleArray(globalTracks));
+      }
+    }
+
+    const freshTracks = batch.filter(t => {
+      const key = t.videoId || t.name;
+      return key && !forYouFeed.shownIds.has(key);
+    });
+
+    if (!freshTracks.length) {
+      forYouFeed.exhausted = true;
+    } else {
+      appendTrackRows(container, freshTracks.slice(0, 10));
+    }
+  } catch (e) {
+    // Silent fail — the observer just retries on the next scroll intersection
+  } finally {
+    loadingEl.remove();
+    forYouFeed.loading = false;
+  }
+}
+
+function initForYouFeed() {
+  const container = $('madeForYouList');
+  if (!container || forYouFeed.initialized) return;
+
+  forYouFeed.initialized = true;
+  forYouFeed.seedPool = buildForYouSeedPool();
+
+  const sentinel = document.createElement('div');
+  sentinel.id = 'forYouScrollSentinel';
+  sentinel.style.cssText = 'height:1px;';
+  container.after(sentinel);
+
+  const scrollRoot = document.getElementById('contentBody') || null;
+  forYouFeed.observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) loadMoreForYouTracks();
+    });
+  }, { root: scrollRoot, rootMargin: '400px' });
+  forYouFeed.observer.observe(sentinel);
+
+  // Pre-load a couple of batches so the page never opens empty
+  loadMoreForYouTracks().then(() => loadMoreForYouTracks());
 }
