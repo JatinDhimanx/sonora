@@ -124,9 +124,7 @@ const PLAY_SVG = '<path d="M8 5v14l11-7z"/>';
 const PAUSE_SVG = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
 const HEART_FILLED = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#E05D38" stroke="#E05D38" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
 const HEART_OUTLINE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
-// Single default thumbnail used everywhere so every suggestion row/card falls
-// back to the exact same square image size instead of a broken-icon or a
-// differently-shaped placeholder.
+
 const FALLBACK_THUMB = 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80';
 
 let ytPlayer = null;
@@ -146,9 +144,6 @@ let isRepeat = false;
 let currentFilter = 'all';
 let likedSongs = JSON.parse(localStorage.getItem('sonora_liked_songs') || '[]');
 let customPlaylists = JSON.parse(localStorage.getItem('sonora_playlists') || '[]');
-// Cache of whatever the home page is currently recommending, so the Search
-// page's default (empty-query) state can mirror the exact same suggestions
-// instead of duplicating fetch logic or showing something different.
 let lastRecommendedTracks = [];
 let viewStack = ['home'];
 let viewStackIndex = 0;
@@ -177,6 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupPlaylistsModal();
   setupMediaSession();
   setupEasyModeControls();
+  setupRemoteCachePurgeListener();
   updateTimeTag();
 
   renderLikedSongsView();
@@ -235,7 +231,17 @@ function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').then((reg) => {
-        console.log('Sonora PWA Service Worker registered:', reg.scope);
+        reg.update();
+        reg.onupdatefound = () => {
+          const installingWorker = reg.installing;
+          if (installingWorker) {
+            installingWorker.onstatechange = () => {
+              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                window.location.reload();
+              }
+            };
+          }
+        };
       }).catch((err) => {
         console.warn('Service Worker registration failed:', err);
       });
@@ -347,7 +353,7 @@ window.onYouTubeIframeAPIReady = function () {
       },
       onStateChange: onPlayerStateChange,
       onError: (event) => {
-        console.warn('YouTube Player IFrame notice/error:', event.data);
+        console.warn('YouTube Player error:', event.data);
         if (currentTrack && currentTrack.videoId && bgAudioBridge) {
           bgAudioBridge.src = `${API_BASE}/api/stream/${currentTrack.videoId}`;
           bgAudioBridge.play().then(() => {
@@ -488,7 +494,7 @@ function setupMediaSession() {
 function updateMediaSessionMetadata(track) {
   if (!('mediaSession' in navigator) || !track) return;
 
-  const artworkUrl = track.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80';
+  const artworkUrl = track.thumbnail || FALLBACK_THUMB;
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.name || 'Unknown Track',
     artist: track.artist || 'Sonora',
@@ -611,7 +617,6 @@ function updateProgress() {
 function formatTime(seconds) {
   if (!seconds || seconds === '0:00') return '';
 
-  // Agar backend se already "3:45" string aayi ho
   if (typeof seconds === 'string' && seconds.includes(':')) {
     return seconds;
   }
@@ -816,12 +821,10 @@ function setupFullscreenPlayer() {
 function upgradeThumbToHD(url) {
   if (!url) return FALLBACK_THUMB;
   
-  // Google User Content / YT Music sizing
   let hd = url.replace(/=w\d+-h\d+/, '=w512-h512')
               .replace(/=s\d+/, '=s512')
               .replace(/=w\d+/, '=w512');
               
-  // YouTube standard images (hqdefault is 100% reliable)
   if (hd.includes('ytimg.com')) {
     hd = hd.replace('/default.jpg', '/hqdefault.jpg');
   }
@@ -966,8 +969,8 @@ async function playNextTrack() {
             name: s.title || s.name,
             artist: s.artist?.name || s.artist || 'Unknown',
             album: s.album?.name || '',
-            thumbnail: s.thumbnail || s.thumbnails?.[0]?.url || '',
-            duration: s.duration || 200
+            thumbnail: s.thumbnail || s.thumbnails?.[0]?.url || FALLBACK_THUMB,
+            duration: s.duration || s.duration_seconds || 200
           }));
           currentPlaylist = currentPlaylist.concat(formattedUpNext);
           playTrack(currentPlaylist[currentTrackIndex], currentPlaylist);
@@ -1375,7 +1378,7 @@ function renderTopResultCard(top) {
   if (!topResultContainer || !topResultCard) return;
   topResultContainer.classList.remove('hidden');
   const isArtist = top.type === 'artist' || top.artistId;
-  const thumb = top.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=200&q=80';
+  const thumb = top.thumbnail || FALLBACK_THUMB;
   const typeText = top.type ? top.type.toUpperCase() : 'TOP RESULT';
 
   topResultCard.innerHTML = `
@@ -1418,13 +1421,13 @@ function renderSongsSection(songs) {
 
     row.innerHTML = `
       <span class="track-num" data-original-idx="${(idx + 1).toString().padStart(2, '0')}">${(idx + 1).toString().padStart(2, '0')}</span>
-      <img class="track-thumb" src="${song.thumbnail || ''}" alt="${escapeHtml(song.name)}" />
+      <img class="track-thumb" src="${song.thumbnail || FALLBACK_THUMB}" alt="${escapeHtml(song.name)}" />
       <div class="track-details">
         <span class="track-name">${escapeHtml(song.name)}</span>
         <span class="track-artist">${escapeHtml(song.artist)}</span>
       </div>
       <span class="track-album">${escapeHtml(song.album || '')}</span>
-      <span class="track-time">${song.duration ? formatTime(song.duration) : ''}</span>
+      <span class="track-time">${formatTime(song.duration || song.duration_seconds || song.length)}</span>
       <button class="like-heart-btn ${isLiked ? 'active' : ''}">${isLiked ? HEART_FILLED : HEART_OUTLINE}</button>
     `;
 
@@ -1478,7 +1481,7 @@ function renderAlbumsSection(albums) {
   albums.forEach(album => {
     const card = document.createElement('div');
     card.className = 'album-card';
-    const thumb = album.thumbnail || '';
+    const thumb = album.thumbnail || FALLBACK_THUMB;
     card.innerHTML = `
       <div class="album-art-wrap">
         <img class="album-cover-img" src="${thumb}" alt="${escapeHtml(album.name)}" />
@@ -1561,8 +1564,8 @@ async function openArtistDetails(artistId, name, thumbnail) {
       name: s.name || s.title,
       artist: name,
       album: s.album?.name || '',
-      thumbnail: s.thumbnails?.[0]?.url || thumbnail,
-      duration: s.duration || 200
+      thumbnail: s.thumbnails?.[0]?.url || thumbnail || FALLBACK_THUMB,
+      duration: s.duration || s.duration_seconds || 200
     }));
 
     if (songs.length) {
@@ -1585,7 +1588,7 @@ async function openAlbumDetails(albumId, name, artist, thumbnail) {
 
   if (detailHeader) {
     detailHeader.innerHTML = `
-      <img class="detail-cover" src="${thumbnail}" alt="${escapeHtml(name)}" />
+      <img class="detail-cover" src="${thumbnail || FALLBACK_THUMB}" alt="${escapeHtml(name)}" />
       <div class="detail-info">
         <span class="detail-type">ALBUM</span>
         <h1 class="detail-title">${escapeHtml(name)}</h1>
@@ -1606,8 +1609,8 @@ async function openAlbumDetails(albumId, name, artist, thumbnail) {
       name: s.name || s.title,
       artist: artist || name,
       album: name,
-      thumbnail: thumbnail,
-      duration: s.duration || 200
+      thumbnail: thumbnail || FALLBACK_THUMB,
+      duration: s.duration || s.duration_seconds || 200
     }));
 
     if (songs.length) {
@@ -1651,8 +1654,8 @@ async function openPlaylistDetails(playlistId, name, author, thumbnail) {
       name: s.title || s.name,
       artist: s.artist?.name || s.author || 'Various Artists',
       album: name,
-      thumbnail: s.thumbnail || thumbnail,
-      duration: s.duration || 200
+      thumbnail: s.thumbnail || thumbnail || FALLBACK_THUMB,
+      duration: s.duration || s.duration_seconds || 200
     }));
 
     if (songs.length) {
@@ -1682,13 +1685,13 @@ function renderDetailTracks(songs) {
 
     row.innerHTML = `
       <span class="track-num" data-original-idx="${(idx + 1).toString().padStart(2, '0')}">${(idx + 1).toString().padStart(2, '0')}</span>
-      <img class="track-thumb" src="${song.thumbnail || ''}" alt="${escapeHtml(song.name)}" />
+      <img class="track-thumb" src="${song.thumbnail || FALLBACK_THUMB}" alt="${escapeHtml(song.name)}" />
       <div class="track-details">
         <span class="track-name">${escapeHtml(song.name)}</span>
         <span class="track-artist">${escapeHtml(song.artist)}</span>
       </div>
       <span class="track-album">${escapeHtml(song.album || '')}</span>
-      <span class="track-time">${song.duration ? formatTime(song.duration) : ''}</span>
+      <span class="track-time">${formatTime(song.duration || song.duration_seconds || song.length)}</span>
       <button class="like-heart-btn ${isLiked ? 'active' : ''}">${isLiked ? HEART_FILLED : HEART_OUTLINE}</button>
     `;
 
@@ -1712,7 +1715,6 @@ async function fetchAndPlaySearch(query) {
   let q = (query || '').trim();
   if (!q) return;
 
-  // Brackets, quotes aur special characters clean karein taaki search fail na ho
   q = q.replace(/[\(\[\{].*?[\)\]\}]/g, '').replace(/["']/g, '').trim();
 
   try {
@@ -1722,7 +1724,6 @@ async function fetchAndPlaySearch(query) {
     
     if (songs && songs.length) {
       const target = songs[0];
-      // Normalize videoId
       const videoId = target.videoId || (typeof target.id === 'object' ? target.id.videoId : target.id);
       playTrack({
         ...target,
@@ -1776,13 +1777,13 @@ function renderLikedSongsView() {
 
     row.innerHTML = `
       <span class="track-num" data-original-idx="${(idx + 1).toString().padStart(2, '0')}">${(idx + 1).toString().padStart(2, '0')}</span>
-      <img class="track-thumb" src="${song.thumbnail || ''}" alt="${escapeHtml(song.name)}" />
+      <img class="track-thumb" src="${song.thumbnail || FALLBACK_THUMB}" alt="${escapeHtml(song.name)}" />
       <div class="track-details">
         <span class="track-name">${escapeHtml(song.name)}</span>
         <span class="track-artist">${escapeHtml(song.artist)}</span>
       </div>
       <span class="track-album">${escapeHtml(song.album || '')}</span>
-      <span class="track-time">${song.duration ? formatTime(song.duration) : ''}</span>
+      <span class="track-time">${formatTime(song.duration || song.duration_seconds || song.length)}</span>
       <button class="like-heart-btn active">${HEART_FILLED}</button>
     `;
 
@@ -1825,7 +1826,7 @@ function renderLikedSongsViewIntoLibrary() {
         </div>
         <span class="track-album">Tide Lines</span>
         <span class="track-time">4:18</span>
-        <button class="like-heart-btn active"><svg viewBox="0 0 24 24" width="15" height="15" fill="#E05D38" stroke="#E05D38" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
+        <button class="like-heart-btn active">${HEART_FILLED}</button>
       </div>
       <div class="track-row" data-song="Refraction Cleo North">
         <span class="track-num">02</span>
@@ -1836,7 +1837,7 @@ function renderLikedSongsViewIntoLibrary() {
         </div>
         <span class="track-album">Glass Hours</span>
         <span class="track-time">5:12</span>
-        <button class="like-heart-btn active"><svg viewBox="0 0 24 24" width="15" height="15" fill="#E05D38" stroke="#E05D38" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
+        <button class="like-heart-btn active">${HEART_FILLED}</button>
       </div>
     `;
     setupAllAppInteractions();
@@ -1851,13 +1852,13 @@ function renderLikedSongsViewIntoLibrary() {
 
     row.innerHTML = `
       <span class="track-num" data-original-idx="${(idx + 1).toString().padStart(2, '0')}">${(idx + 1).toString().padStart(2, '0')}</span>
-      <img class="track-thumb" src="${song.thumbnail || ''}" alt="${escapeHtml(song.name)}" />
+      <img class="track-thumb" src="${song.thumbnail || FALLBACK_THUMB}" alt="${escapeHtml(song.name)}" />
       <div class="track-details">
         <span class="track-name">${escapeHtml(song.name)}</span>
         <span class="track-artist">${escapeHtml(song.artist)}</span>
       </div>
       <span class="track-album">${escapeHtml(song.album || '')}</span>
-      <span class="track-time">${song.duration ? formatTime(song.duration) : ''}</span>
+      <span class="track-time">${formatTime(song.duration || song.duration_seconds || song.length)}</span>
       <button class="like-heart-btn active">${HEART_FILLED}</button>
     `;
 
@@ -1955,7 +1956,7 @@ function renderCustomPlaylists() {
     card.className = 'playlist-card';
     card.innerHTML = `
       <div class="playlist-grid-4">
-        <img src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=150&q=80" alt="${escapeHtml(pl.name)}" />
+        <img src="${FALLBACK_THUMB}" alt="${escapeHtml(pl.name)}" />
         <img src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=150&q=80" alt="${escapeHtml(pl.name)}" />
         <img src="https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=150&q=80" alt="${escapeHtml(pl.name)}" />
         <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80" alt="${escapeHtml(pl.name)}" />
@@ -2191,7 +2192,7 @@ function updateEasyModeTrackInfo(track) {
   if (easyTrackTitle) easyTrackTitle.textContent = trackToUse.name || 'Unknown Track';
   if (easyTrackArtist) easyTrackArtist.textContent = trackToUse.artist || 'Sonora';
 
-  const hdArt = upgradeThumbToHD(trackToUse.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80');
+  const hdArt = upgradeThumbToHD(trackToUse.thumbnail || FALLBACK_THUMB);
   if (easyBgArt) easyBgArt.src = hdArt;
   if (easyTrackThumb) easyTrackThumb.src = hdArt;
 
@@ -2341,7 +2342,7 @@ async function executeEasySearch(query) {
       const item = document.createElement('div');
       item.className = 'easy-search-item';
       item.innerHTML = `
-        <img class="easy-search-thumb" src="${s.thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=100&q=80'}" alt="" />
+        <img class="easy-search-thumb" src="${s.thumbnail || FALLBACK_THUMB}" alt="" />
         <div class="easy-search-meta">
           <h4>${escapeHtml(s.name || s.title || 'Unknown')}</h4>
           <p>${escapeHtml(s.artist?.name || s.artist || 'Unknown')}</p>
@@ -2353,7 +2354,7 @@ async function executeEasySearch(query) {
           name: s.name || s.title,
           artist: s.artist?.name || s.artist || 'Unknown',
           album: s.album?.name || '',
-          thumbnail: s.thumbnail,
+          thumbnail: s.thumbnail || FALLBACK_THUMB,
           duration: s.duration || 200
         };
         playTrack(track, songs);
@@ -2455,7 +2456,7 @@ function recordSongToHistory(track) {
     name: track.name || '',
     artist: track.artist || 'Unknown Artist',
     album: track.album || '',
-    thumbnail: track.thumbnail || '',
+    thumbnail: track.thumbnail || FALLBACK_THUMB,
     duration: track.duration || 0,
     timestamp: Date.now()
   };
@@ -2469,9 +2470,6 @@ function recordSongToHistory(track) {
     localStorage.setItem('sonora_user_history', JSON.stringify(userHistory));
   } catch (e) {}
 
-  // If the "For You" feed is already open, feed it fresh signal immediately
-  // so the scroll feed adapts to what's being played right now, not just
-  // what was in localStorage when the page first loaded.
   if (typeof forYouFeed !== 'undefined' && forYouFeed.initialized) {
     forYouFeed.seedPool.unshift(historyItem);
   }
@@ -2506,7 +2504,7 @@ async function renderPersonalizedHomeFeed() {
           artist: s.artist?.name || s.artist || 'Various Artists',
           album: s.album?.name || s.album || 'Single',
           thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB),
-          duration: s.duration || 200
+          duration: s.duration || s.duration_seconds || s.length || 200
         }));
 
         renderTrackRows(homeTrackList, formatted.slice(0, 10));
@@ -2534,7 +2532,6 @@ async function renderPersonalizedHomeFeed() {
 
   const seedTrack = tastePool[Math.floor(Math.random() * Math.min(tastePool.length, 6))] || userHistory[0];
   
-  // Clean Artist Name Check (Avoids "More songs like Unknown")
   const validArtist = (seedTrack.artist && 
                        seedTrack.artist.toLowerCase() !== 'unknown' && 
                        seedTrack.artist.toLowerCase() !== 'unknown artist') 
@@ -2580,7 +2577,7 @@ async function renderPersonalizedHomeFeed() {
           artist: s.artist?.name || s.artist || 'Various Artists',
           album: s.album?.name || s.album || 'Single',
           thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB),
-          duration: s.duration || 200
+          duration: s.duration || s.duration_seconds || s.length || 200
         }));
 
         renderTrackRows(homeTrackList, formatted.slice(0, 10));
@@ -2601,8 +2598,6 @@ async function renderSearchBrowseSuggestions() {
   const albumsTitle = $('searchBrowseAlbumsTitle');
   if (!songsList) return;
 
-  // Reuse whatever the home feed already resolved — same suggestions,
-  // no duplicate network calls, and both pages always stay in sync.
   if (lastRecommendedTracks.length) {
     if (songsTitle) songsTitle.textContent = userHistory.length ? 'Recommended for you' : 'Songs';
     if (albumsTitle) albumsTitle.textContent = userHistory.length ? 'Picked for you' : 'Albums';
@@ -2611,9 +2606,6 @@ async function renderSearchBrowseSuggestions() {
     return;
   }
 
-  // Home feed hasn't resolved yet (e.g. user opened Search first) — fetch
-  // something reasonable directly so the page is never stuck on static
-  // placeholder content.
   try {
     const res = await fetch(`${API_BASE}/api/global-mix`);
     const tracks = await res.json();
@@ -2703,8 +2695,6 @@ function renderAlbumCards(container, tracks) {
 
 /* ==========================================================================
    🔁 "MADE FOR YOU" — INFINITE PERSONALIZED SCROLL FEED
-   Blends listening history + liked songs into a seed pool, then keeps
-   fetching related tracks as the user scrolls down the page (reels-style).
    ========================================================================== */
 
 function shuffleArray(arr) {
@@ -2729,7 +2719,6 @@ const forYouFeed = {
 function buildForYouSeedPool() {
   const pool = [];
   const seen = new Set();
-  // Liked songs are the strongest taste signal, recent history keeps it fresh
   [...likedSongs, ...userHistory].forEach(t => {
     const key = t.videoId || t.name;
     if (key && !seen.has(key)) {
@@ -2761,7 +2750,7 @@ function appendTrackRows(container, tracks) {
         <span class="track-artist">${escapeHtml(t.artist)}</span>
       </div>
       <span class="track-album">${escapeHtml(t.album || 'Single')}</span>
-      <span class="track-time">${formatTime(t.duration || 200)}</span>
+      <span class="track-time">${formatTime(t.duration || t.duration_seconds || t.length)}</span>
       <button class="like-heart-btn ${isLiked ? 'active' : ''}">${isLiked ? HEART_FILLED : HEART_OUTLINE}</button>
     `;
 
@@ -2772,7 +2761,6 @@ function appendTrackRows(container, tracks) {
         const nowLiked = isSongLiked(t.videoId || t.name);
         heartBtn.classList.toggle('active', nowLiked);
         heartBtn.innerHTML = nowLiked ? HEART_FILLED : HEART_OUTLINE;
-        // A fresh like instantly strengthens the next scroll batches
         if (nowLiked) forYouFeed.seedPool.unshift(t);
         return;
       }
@@ -2810,15 +2798,13 @@ async function loadMoreForYouTracks() {
             name: s.name || s.title || 'Untitled',
             artist: s.artist?.name || s.artist || 'Unknown',
             album: s.album?.name || s.album || '',
-            thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : ''),
-            duration: s.duration || 200
+            thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB),
+            duration: s.duration || s.duration_seconds || s.length || 200
           }));
         }
       }
     }
 
-    // Top up with the global mix if the seed ran dry (new users, or a seed
-    // with few related tracks) so the feed never feels like it stalls.
     if (batch.length < 6) {
       const res = await fetch(`${API_BASE}/api/global-mix`);
       const globalTracks = await res.json();
@@ -2838,7 +2824,6 @@ async function loadMoreForYouTracks() {
       appendTrackRows(container, freshTracks.slice(0, 10));
     }
   } catch (e) {
-    // Silent fail — the observer just retries on the next scroll intersection
   } finally {
     loadingEl.remove();
     forYouFeed.loading = false;
@@ -2865,36 +2850,62 @@ function initForYouFeed() {
   }, { root: scrollRoot, rootMargin: '400px' });
   forYouFeed.observer.observe(sentinel);
 
-  // Pre-load a couple of batches so the page never opens empty
   loadMoreForYouTracks().then(() => loadMoreForYouTracks());
 }
 
 /* ==========================================================================
-   🔄 REMOTE ADMIN CACHE PURGE LISTENER
-   Checks /api/check-reset every 8s. If reset: true, purges localStorage,
-   sessionStorage, Service Worker cache and reloads page.
+   🔄 REMOTE ADMIN CACHE PURGE LISTENER (FIXED)
    ========================================================================== */
 function setupRemoteCachePurgeListener() {
   setInterval(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/check-reset`);
+      const res = await fetch(`${API_BASE}/api/check-reset?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
+      });
       const data = await res.json();
+
       if (data && data.reset) {
-        showToast('Admin has reset app cache. Reloading...');
-        try { localStorage.clear(); } catch(e) {}
-        try { sessionStorage.clear(); } catch(e) {}
+        const lastAppliedReset = localStorage.getItem('sonora_last_reset_id');
+        const currentResetId = String(data.resetId || data.timestamp || 'reset_triggered');
+
+        if (lastAppliedReset === currentResetId && !data.forceAlways) {
+          return;
+        }
+
+        showToast('Admin reset user cache. Reloading as first-time visitor...');
+
+        userHistory = [];
+        likedSongs = [];
+        customPlaylists = [];
+        recentSearches = [];
+        lastRecommendedTracks = [];
+
+        if ('serviceWorker' in navigator) {
+          try {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (let reg of registrations) {
+              await reg.unregister();
+            }
+          } catch (e) {}
+        }
+
         if ('caches' in window) {
           try {
             const keys = await caches.keys();
             await Promise.all(keys.map(k => caches.delete(k)));
-          } catch(e) {}
+          } catch (e) {}
         }
+
+        try {
+          sessionStorage.clear();
+          localStorage.clear();
+        } catch (e) {}
+
         setTimeout(() => {
-          window.location.reload(true);
-        }, 1200);
+          window.location.replace(window.location.origin + '/?fresh=' + Date.now());
+        }, 600);
       }
-    } catch(e) {}
+    } catch (e) {}
   }, 8000);
 }
-
-setupRemoteCachePurgeListener();

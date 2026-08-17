@@ -74,16 +74,18 @@ app.get('/api/admin/sessions', (req, res) => {
 
 app.post('/api/admin/reset-cache', (req, res) => {
   const { ip, all } = req.body || {};
+  const resetId = 'reset_' + Date.now();
+
   if (all) {
     for (const [sIp, s] of activeSessions) {
-      s.resetSignal = true;
+      s.resetSignal = resetId;
     }
     return res.json({ success: true, message: 'Reset signal sent to all user sessions' });
   }
 
   if (ip && activeSessions.has(ip)) {
     const session = activeSessions.get(ip);
-    session.resetSignal = true;
+    session.resetSignal = resetId;
     return res.json({ success: true, message: `Reset signal sent to IP ${ip}` });
   }
 
@@ -96,8 +98,9 @@ app.get('/api/check-reset', (req, res) => {
   const session = activeSessions.get(ip);
 
   if (session && session.resetSignal) {
+    const resetId = session.resetSignal;
     session.resetSignal = false;
-    return res.json({ reset: true });
+    return res.json({ reset: true, resetId });
   }
 
   res.json({ reset: false });
