@@ -170,7 +170,7 @@ let currentPlaylist = [];
 let currentTrackIndex = -1;
 let currentTrack = null;
 let isMuted = false;
-let lastVolume = 80;
+let lastVolume = 100;
 let isShuffle = false;
 let isRepeat = false;
 let isEasyMode = false;
@@ -744,6 +744,18 @@ function renderAlbumCards(container, tracks) {
 let isUserScrollingLyrics = false;
 let userLyricsScrollTimeout = null;
 
+function smoothScrollLyrics(container, lineEl) {
+  if (!container || !lineEl) return;
+  const containerRect = container.getBoundingClientRect();
+  const lineRect = lineEl.getBoundingClientRect();
+  const relativeOffset = lineRect.top - containerRect.top;
+  const targetScroll = container.scrollTop + relativeOffset - (container.clientHeight / 2) + (lineEl.clientHeight / 2);
+  container.scrollTo({
+    top: Math.max(0, targetScroll),
+    behavior: 'smooth'
+  });
+}
+
 function setupLyricsInteraction() {
   if (!fsLyricsContent) return;
   const onUserScrollActivity = () => {
@@ -751,15 +763,9 @@ function setupLyricsInteraction() {
     if (userLyricsScrollTimeout) clearTimeout(userLyricsScrollTimeout);
     userLyricsScrollTimeout = setTimeout(() => {
       isUserScrollingLyrics = false;
-      // Smoothly re-center the current active lyric when user finishes reading
+      // Smoothly re-center the current active lyric strictly inside the lyrics container
       if (currentActiveLyricIndex >= 0 && fsLyricsContent && fsLyricsContent.children[currentActiveLyricIndex]) {
-        try {
-          fsLyricsContent.children[currentActiveLyricIndex].scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-            inline: 'nearest'
-          });
-        } catch (e) {}
+        smoothScrollLyrics(fsLyricsContent, fsLyricsContent.children[currentActiveLyricIndex]);
       }
     }, 3200);
   };
@@ -796,19 +802,7 @@ function syncFullscreenLyricsProgress(currentTime) {
         lineEl.classList.remove('passed');
 
         if (!isUserScrollingLyrics) {
-          try {
-            lineEl.scrollIntoView({
-              behavior: 'smooth',
-              block: 'center',
-              inline: 'nearest'
-            });
-          } catch (e) {
-            const containerTop = fsLyricsContent.getBoundingClientRect().top;
-            const lineTop = lineEl.getBoundingClientRect().top;
-            const relativeOffset = lineTop - containerTop;
-            const targetScroll = fsLyricsContent.scrollTop + relativeOffset - (fsLyricsContent.clientHeight / 2) + (lineEl.clientHeight / 2);
-            fsLyricsContent.scrollTo({ top: targetScroll, behavior: 'smooth' });
-          }
+          smoothScrollLyrics(fsLyricsContent, lineEl);
         }
       } else if (idx < activeIdx) {
         lineEl.classList.remove('active');
