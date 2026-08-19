@@ -739,8 +739,38 @@ function renderAlbumCards(container, tracks) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// 🎵 PRECISION SCROLL & REAL-TIME LYRICS SYNC ENGINE
+// 🎵 PRECISION SCROLL & REAL-TIME LYRICS SYNC ENGINE (APPLE MUSIC STYLE)
 // ══════════════════════════════════════════════════════════════════════════
+let isUserScrollingLyrics = false;
+let userLyricsScrollTimeout = null;
+
+function setupLyricsInteraction() {
+  if (!fsLyricsContent) return;
+  const onUserScrollActivity = () => {
+    isUserScrollingLyrics = true;
+    if (userLyricsScrollTimeout) clearTimeout(userLyricsScrollTimeout);
+    userLyricsScrollTimeout = setTimeout(() => {
+      isUserScrollingLyrics = false;
+      // Smoothly re-center the current active lyric when user finishes reading
+      if (currentActiveLyricIndex >= 0 && fsLyricsContent && fsLyricsContent.children[currentActiveLyricIndex]) {
+        try {
+          fsLyricsContent.children[currentActiveLyricIndex].scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+        } catch (e) {}
+      }
+    }, 3200);
+  };
+
+  fsLyricsContent.addEventListener('wheel', onUserScrollActivity, { passive: true });
+  fsLyricsContent.addEventListener('touchmove', onUserScrollActivity, { passive: true });
+  fsLyricsContent.addEventListener('pointerdown', onUserScrollActivity, { passive: true });
+}
+
+setupLyricsInteraction();
+
 function syncFullscreenLyricsProgress(currentTime) {
   if (!activeSyncedLyrics || !activeSyncedLyrics.length || !fsLyricsContent) return;
 
@@ -763,19 +793,29 @@ function syncFullscreenLyricsProgress(currentTime) {
       const lineEl = lines[idx];
       if (idx === activeIdx) {
         lineEl.classList.add('active');
+        lineEl.classList.remove('passed');
 
-        // Exact programmatic smooth centering without layout thrash
-        const containerTop = fsLyricsContent.getBoundingClientRect().top;
-        const lineTop = lineEl.getBoundingClientRect().top;
-        const relativeOffset = lineTop - containerTop;
-        const targetScroll = fsLyricsContent.scrollTop + relativeOffset - (fsLyricsContent.clientHeight / 2) + (lineEl.clientHeight / 2);
-
-        fsLyricsContent.scrollTo({
-          top: targetScroll,
-          behavior: 'smooth'
-        });
+        if (!isUserScrollingLyrics) {
+          try {
+            lineEl.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest'
+            });
+          } catch (e) {
+            const containerTop = fsLyricsContent.getBoundingClientRect().top;
+            const lineTop = lineEl.getBoundingClientRect().top;
+            const relativeOffset = lineTop - containerTop;
+            const targetScroll = fsLyricsContent.scrollTop + relativeOffset - (fsLyricsContent.clientHeight / 2) + (lineEl.clientHeight / 2);
+            fsLyricsContent.scrollTo({ top: targetScroll, behavior: 'smooth' });
+          }
+        }
+      } else if (idx < activeIdx) {
+        lineEl.classList.remove('active');
+        lineEl.classList.add('passed');
       } else {
         lineEl.classList.remove('active');
+        lineEl.classList.remove('passed');
       }
     }
   }
@@ -792,7 +832,7 @@ async function fetchAndRenderFullscreenLyrics(track) {
 
   const trackId = track.videoId || track.name;
   activeLyricsRequestId = trackId;
-  fsLyricsContent.innerHTML = '<p class="lyrics-placeholder">Fetching synchronized lyrics...</p>';
+  fsLyricsContent.innerHTML = '<p class="lyrics-placeholder lyrics-loading-pulse">Fetching synchronized lyrics...</p>';
   activeSyncedLyrics = null;
   currentActiveLyricIndex = -1;
 
@@ -809,10 +849,12 @@ async function fetchAndRenderFullscreenLyrics(track) {
       activeSyncedLyrics = data.lines;
       const frag = document.createDocumentFragment();
 
-      data.lines.forEach((lineObj) => {
+      data.lines.forEach((lineObj, idx) => {
         const p = document.createElement('p');
         p.className = 'fs-lyrics-line';
         p.dataset.time = lineObj.time;
+        p.dataset.index = idx;
+        p.style.setProperty('--line-idx', Math.min(idx, 28));
         p.textContent = lineObj.text;
 
         p.addEventListener('click', () => {
@@ -823,6 +865,7 @@ async function fetchAndRenderFullscreenLyrics(track) {
           if (bgAudioBridge && !bgAudioBridge.paused) {
             bgAudioBridge.currentTime = seekTarget;
           }
+          isUserScrollingLyrics = false;
           syncFullscreenLyricsProgress(seekTarget);
         });
         frag.appendChild(p);
@@ -839,9 +882,10 @@ async function fetchAndRenderFullscreenLyrics(track) {
     } else if (Array.isArray(data.lines) && data.lines.length) {
       activeSyncedLyrics = null;
       const frag = document.createDocumentFragment();
-      data.lines.forEach((line) => {
+      data.lines.forEach((line, idx) => {
         const p = document.createElement('p');
         p.className = 'fs-lyrics-line static-lyric';
+        p.style.setProperty('--line-idx', Math.min(idx, 28));
         p.textContent = typeof line === 'string' ? line : (line.text || '');
         frag.appendChild(p);
       });
@@ -2119,10 +2163,20 @@ async function fetchAndRenderLyrics(track) {
 
     if (Array.isArray(lines) && lines.length) {
       const frag = document.createDocumentFragment();
-      lines.forEach(lineObj => {
+      lines.forEach((lineObj, idx) => {
         const p = document.createElement('p');
         p.className = 'lyrics-line';
-        p.textContent = typeof lineObj === 'string' ? lineObj : (lineObj.text || '');
+        p.style.setProperty('--line-idx', Math.min(idx, 28));
+        const text = typeof lineObj === 'string' ? lineObj : (lineObj.text || '');
+        p.textContent = text;
+        if (lineObj && typeof lineObj === 'object' && lineObj.time !== undefined) {
+          p.dataset.time = lineObj.time;
+          p.addEventListener('click', () => {
+            const seekTarget = parseFloat(lineObj.time);
+            if (ytPlayer && isPlayerReady) ytPlayer.seekTo(seekTarget, true);
+            if (bgAudioBridge && !bgAudioBridge.paused) bgAudioBridge.currentTime = seekTarget;
+          });
+        }
         frag.appendChild(p);
       });
       lyricsContent.innerHTML = '';
