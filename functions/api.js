@@ -63,24 +63,60 @@ function bestThumb(thumbs) {
   return thumbs[thumbs.length - 1]?.url || thumbs[0]?.url || "";
 }
 
+function extractArtistName(s) {
+  if (!s) return "Various Artists";
+  if (typeof s === "string" && s.trim()) return s.trim();
+
+  if (typeof s.artist === "string" && s.artist.trim()) return s.artist.trim();
+  if (s.artist && typeof s.artist === "object") {
+    if (typeof s.artist.name === "string" && s.artist.name.trim()) return s.artist.name.trim();
+    if (typeof s.artist.title === "string" && s.artist.title.trim()) return s.artist.title.trim();
+  }
+
+  if (typeof s.artists === "string" && s.artists.trim()) return s.artists.trim();
+  if (Array.isArray(s.artists) && s.artists.length) {
+    const list = s.artists
+      .map(a => (typeof a === "string" ? a.trim() : (a?.name || "").trim()))
+      .filter(Boolean);
+    if (list.length) return list.join(", ");
+  }
+
+  if (typeof s.author === "string" && s.author.trim()) return s.author.trim();
+  if (s.author && typeof s.author === "object" && s.author.name) return s.author.name.trim();
+  if (typeof s.uploader === "string" && s.uploader.trim()) return s.uploader.trim();
+  if (typeof s.channelTitle === "string" && s.channelTitle.trim()) return s.channelTitle.trim();
+  if (typeof s.channel === "string" && s.channel.trim()) return s.channel.trim();
+
+  const title = s.name || s.title || "";
+  if (title.includes(" - ")) {
+    const parts = title.split(" - ");
+    if (parts.length >= 2 && parts[0].trim().length > 1) {
+      return parts[0].trim();
+    }
+  }
+
+  return "Various Artists";
+}
+
 function mapSong(s) {
+  if (!s) return null;
   return {
-    videoId: s.videoId,
-    name: s.name || "Untitled Track",
-    artist: s.artist?.name || (Array.isArray(s.artists) ? s.artists.map((a) => a.name).join(", ") : "Unknown Artist"),
-    artistId: s.artist?.artistId || s.artists?.[0]?.artistId || null,
-    album: s.album?.name || "",
+    videoId: s.videoId || (typeof s.id === "object" ? s.id.videoId : s.id) || "",
+    name: s.name || s.title || s.heading || "Untitled Track",
+    artist: extractArtistName(s),
+    artistId: s.artist?.artistId || (Array.isArray(s.artists) && s.artists[0]?.artistId) || null,
+    album: s.album?.name || (typeof s.album === "string" ? s.album : "Single"),
     albumId: s.album?.albumId || null,
-    duration: s.duration || 0,
-    thumbnail: bestThumb(s.thumbnails),
+    duration: s.duration || s.duration_seconds || s.length || 0,
+    thumbnail: bestThumb(s.thumbnails) || (typeof s.thumbnail === "string" ? s.thumbnail : ""),
   };
 }
 
 function mapArtist(a) {
   return {
-    artistId: a.artistId,
-    name: a.name || "Unknown Artist",
-    thumbnail: bestThumb(a.thumbnails),
+    artistId: a.artistId || "",
+    name: a.name || a.title || "Artist",
+    thumbnail: bestThumb(a.thumbnails) || (typeof a.thumbnail === "string" ? a.thumbnail : ""),
   };
 }
 
@@ -489,7 +525,10 @@ router.get(
   requireReady,
   wrap(async (req, res) => {
     const upNext = await ytmusic.getUpNexts(req.params.id);
-    res.json(upNext || []);
+    if (Array.isArray(upNext)) {
+      return res.json(upNext.map(mapSong).filter(Boolean));
+    }
+    res.json([]);
   })
 );
 

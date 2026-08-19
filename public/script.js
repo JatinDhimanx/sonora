@@ -151,10 +151,58 @@ const HEART_FILLED = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#E05
 const HEART_OUTLINE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
 const FALLBACK_THUMB = 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80';
 
+function safeArtist(s) {
+  if (!s) return 'Various Artists';
+  if (typeof s === 'string') {
+    const trimmed = s.trim();
+    return (trimmed && !/^unknown( artist)?$/i.test(trimmed)) ? trimmed : 'Various Artists';
+  }
+
+  if (typeof s.artist === 'string' && s.artist.trim()) {
+    const trimmed = s.artist.trim();
+    if (!/^unknown( artist)?$/i.test(trimmed)) return trimmed;
+  }
+  if (s.artist && typeof s.artist === 'object' && s.artist.name) {
+    const trimmed = s.artist.name.trim();
+    if (!/^unknown( artist)?$/i.test(trimmed)) return trimmed;
+  }
+  if (typeof s.artists === 'string' && s.artists.trim()) {
+    const trimmed = s.artists.trim();
+    if (!/^unknown( artist)?$/i.test(trimmed)) return trimmed;
+  }
+  if (Array.isArray(s.artists) && s.artists.length) {
+    const names = s.artists
+      .map(a => (typeof a === 'string' ? a.trim() : (a?.name || '').trim()))
+      .filter(n => n && !/^unknown( artist)?$/i.test(n));
+    if (names.length) return names.join(', ');
+  }
+  if (typeof s.author === 'string' && s.author.trim() && !/^unknown( artist)?$/i.test(s.author.trim())) return s.author.trim();
+  if (s.author && typeof s.author === 'object' && s.author.name) return s.author.name.trim();
+  if (typeof s.uploader === 'string' && s.uploader.trim()) return s.uploader.trim();
+  if (typeof s.channelTitle === 'string' && s.channelTitle.trim()) return s.channelTitle.trim();
+
+  // If title is "Artist - Track"
+  const title = s.name || s.title || '';
+  if (title.includes(' - ')) {
+    const parts = title.split(' - ');
+    if (parts.length >= 2 && parts[0].trim().length > 1) {
+      return parts[0].trim();
+    }
+  }
+
+  return 'Various Artists';
+}
+
+function safeTitle(s) {
+  if (!s) return 'Untitled Track';
+  if (typeof s === 'string') return s.trim() || 'Untitled Track';
+  return (s.name || s.title || s.heading || 'Untitled Track').trim();
+}
+
 const DEFAULT_SONG = {
   videoId: 'dQw4w9WgXcQ',
   name: 'Still Water',
-  artist: 'Mara Vale · Tide Lines',
+  artist: 'Mara Vale',
   album: 'Tide Lines',
   thumbnail: FALLBACK_THUMB,
   duration: 232
@@ -564,8 +612,8 @@ function playTrack(track, playlist = []) {
 }
 
 function setTrackInfo(track) {
-  if (playerTitle) playerTitle.textContent = track.name || 'Unknown Track';
-  if (playerArtist) playerArtist.textContent = track.artist || 'Unknown Artist';
+  if (playerTitle) playerTitle.textContent = safeTitle(track);
+  if (playerArtist) playerArtist.textContent = safeArtist(track);
   if (playerThumb) playerThumb.src = safeThumb(track.thumbnail);
 
   const isLiked = isSongLiked(track.videoId || track.name);
@@ -968,9 +1016,9 @@ async function playNextTrack() {
           const uniqueSongs = rawSongs
             .map(s => ({
               videoId: s.videoId || (typeof s.id === 'object' ? s.id.videoId : s.id) || '',
-              name: s.name || s.title || s.heading || 'Untitled Track',
-              artist: s.artist?.name || s.artist || currentTrack.artist || 'Sonora',
-              album: s.album?.name || s.album || 'Single',
+              name: safeTitle(s),
+              artist: safeArtist(s) || safeArtist(currentTrack) || 'Sonora',
+              album: s.album?.name || (typeof s.album === 'string' ? s.album : 'Single'),
               thumbnail: safeThumb(s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : null)),
               duration: s.duration || s.duration_seconds || s.length || 200
             }))
@@ -1112,8 +1160,8 @@ function setupFullscreenPlayer() {
 
 function syncFullscreenUI() {
   if (!currentTrack) return;
-  if (fsTrackTitle) fsTrackTitle.textContent = currentTrack.name || 'Unknown Track';
-  if (fsTrackArtist) fsTrackArtist.textContent = currentTrack.artist || 'Unknown Artist';
+  if (fsTrackTitle) fsTrackTitle.textContent = safeTitle(currentTrack);
+  if (fsTrackArtist) fsTrackArtist.textContent = safeArtist(currentTrack);
   if (fsHeaderAlbum) fsHeaderAlbum.textContent = currentTrack.album || 'Sonora Record';
 
   const thumbUrl = safeThumb(currentTrack.thumbnail);
@@ -2202,10 +2250,10 @@ async function renderPersonalizedHomeFeed() {
         if (Array.isArray(data) && data.length) {
           data.forEach(s => addToTaste({
             videoId: s.videoId,
-            name: s.name || s.title || 'Untitled',
-            artist: s.artist?.name || s.artist || 'Unknown',
-            album: s.album?.name || s.album || '',
-            thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB),
+            name: safeTitle(s),
+            artist: safeArtist(s),
+            album: s.album?.name || (typeof s.album === 'string' ? s.album : ''),
+            thumbnail: safeThumb(s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB)),
             duration: s.duration || 200
           }));
         }
@@ -2221,10 +2269,10 @@ async function renderPersonalizedHomeFeed() {
     if (Array.isArray(raw)) {
       raw.forEach(s => addToTaste({
         videoId: s.videoId || (typeof s.id === 'object' ? s.id.videoId : s.id) || '',
-        name: s.name || s.title || 'Untitled Track',
-        artist: s.artist?.name || s.artist || 'Various Artists',
-        album: s.album?.name || s.album || 'Single',
-        thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB),
+        name: safeTitle(s),
+        artist: safeArtist(s),
+        album: s.album?.name || (typeof s.album === 'string' ? s.album : 'Single'),
+        thumbnail: safeThumb(s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB)),
         duration: s.duration || s.duration_seconds || s.length || 200
       }));
     }
@@ -2677,10 +2725,10 @@ async function loadMoreForYouTracks() {
         if (Array.isArray(data)) {
           batch = data.map(s => ({
             videoId: s.videoId,
-            name: s.name || s.title || 'Untitled',
-            artist: s.artist?.name || s.artist || 'Unknown',
-            album: s.album?.name || s.album || '',
-            thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB),
+            name: safeTitle(s),
+            artist: safeArtist(s),
+            album: s.album?.name || (typeof s.album === 'string' ? s.album : ''),
+            thumbnail: safeThumb(s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB)),
             duration: s.duration || 200
           }));
         }
@@ -2695,10 +2743,10 @@ async function loadMoreForYouTracks() {
       if (Array.isArray(raw)) {
         batch = raw.map(s => ({
           videoId: s.videoId || '',
-          name: s.name || s.title || 'Untitled',
-          artist: s.artist?.name || s.artist || 'Unknown',
-          album: s.album?.name || s.album || '',
-          thumbnail: s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB),
+          name: safeTitle(s),
+          artist: safeArtist(s),
+          album: s.album?.name || (typeof s.album === 'string' ? s.album : ''),
+          thumbnail: safeThumb(s.thumbnail || (s.thumbnails && s.thumbnails[0] ? s.thumbnails[0].url : FALLBACK_THUMB)),
           duration: s.duration || 200
         }));
       }
