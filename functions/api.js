@@ -132,23 +132,51 @@ router.get(
   wrap(async (req, res) => {
     const q = (req.query.q || "").trim();
     const type = (req.query.type || "all").toLowerCase();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     if (!q) return res.status(400).json({ error: "Query parameter 'q' is required" });
-
-    const cacheKey = `search:${type}:${q}`;
-    const hit = cacheGet(cacheKey);
-    if (hit !== undefined) return res.json(hit);
 
     let payload;
 
     if (type === "songs") {
-      payload = (await ytmusic.searchSongs(q)).slice(0, 30).map(mapSong);
+      const cacheKey = `search:songs:${q}`;
+      let allSongs = cacheGet(cacheKey);
+      if (allSongs === undefined) {
+        allSongs = (await ytmusic.searchSongs(q)).map(mapSong);
+        cacheSet(cacheKey, allSongs);
+      }
+      const page = allSongs.slice(offset, offset + limit);
+      payload = { songs: page, total: allSongs.length, offset, limit, hasMore: offset + limit < allSongs.length };
     } else if (type === "artists") {
-      payload = (await ytmusic.searchArtists(q)).slice(0, 10).map(mapArtist);
+      const cacheKey = `search:artists:${q}`;
+      let hit = cacheGet(cacheKey);
+      if (hit === undefined) {
+        hit = (await ytmusic.searchArtists(q)).slice(0, 20).map(mapArtist);
+        cacheSet(cacheKey, hit);
+      }
+      payload = hit;
     } else if (type === "albums") {
-      payload = (await ytmusic.searchAlbums(q)).slice(0, 10).map(mapAlbum);
+      const cacheKey = `search:albums:${q}`;
+      let allAlbums = cacheGet(cacheKey);
+      if (allAlbums === undefined) {
+        allAlbums = (await ytmusic.searchAlbums(q)).map(mapAlbum);
+        cacheSet(cacheKey, allAlbums);
+      }
+      const page = allAlbums.slice(offset, offset + limit);
+      payload = { albums: page, total: allAlbums.length, offset, limit, hasMore: offset + limit < allAlbums.length };
     } else if (type === "playlists") {
-      payload = (await ytmusic.searchPlaylists(q)).slice(0, 10).map(mapPlaylist);
+      const cacheKey = `search:playlists:${q}`;
+      let hit = cacheGet(cacheKey);
+      if (hit === undefined) {
+        hit = (await ytmusic.searchPlaylists(q)).slice(0, 20).map(mapPlaylist);
+        cacheSet(cacheKey, hit);
+      }
+      payload = hit;
     } else {
+      const cacheKey = `search:all:${q}`;
+      let hit = cacheGet(cacheKey);
+      if (hit !== undefined) return res.json(hit);
+
       const [songsR, artistsR, albumsR, playlistsR] = await Promise.allSettled([
         ytmusic.searchSongs(q),
         ytmusic.searchArtists(q),
@@ -156,10 +184,43 @@ router.get(
         ytmusic.searchPlaylists(q),
       ]);
 
-      const songs = songsR.status === "fulfilled" ? songsR.value.slice(0, 15).map(mapSong) : [];
-      const artists = artistsR.status === "fulfilled" ? artistsR.value.slice(0, 6).map(mapArtist) : [];
-      const albums = albumsR.status === "fulfilled" ? albumsR.value.slice(0, 6).map(mapAlbum) : [];
-      const playlists = playlistsR.status === "fulfilled" ? playlistsR.value.slice(0, 6).map(mapPlaylist) : [];
+      let songs = songsR.status === "fulfilled" ? songsR.value.slice(0, 20).map(mapSong) : [];
+      let artists = artistsR.status === "fulfilled" ? artistsR.value.slice(0, 6).map(mapArtist) : [];
+      let albums = albumsR.status === "fulfilled" ? albumsR.value.slice(0, 8).map(mapAlbum) : [];
+      let playlists = playlistsR.status === "fulfilled" ? playlistsR.value.slice(0, 8).map(mapPlaylist) : [];
+
+      if (albums.length < 3 && songs.length > 0) {
+        const seenAlbums = new Set(albums.map(a => (a.name || '').toLowerCase()));
+        songs.forEach(s => {
+          if (s.album && s.album !== 'Single' && !seenAlbums.has(s.album.toLowerCase())) {
+            seenAlbums.add(s.album.toLowerCase());
+            albums.push({
+              albumId: s.albumId || null,
+              name: s.album,
+              artist: s.artist,
+              year: "",
+              type: "Album",
+              thumbnail: s.thumbnail
+            });
+          }
+        });
+      }
+
+      if (playlists.length < 3 && songs.length > 0) {
+        try {
+          const extraPl = await ytmusic.searchPlaylists(`${q} playlist`);
+          if (Array.isArray(extraPl) && extraPl.length) {
+            const seenPl = new Set(playlists.map(p => (p.name || '').toLowerCase()));
+            extraPl.slice(0, 6).forEach(p => {
+              const mapped = mapPlaylist(p);
+              if (!seenPl.has((mapped.name || '').toLowerCase())) {
+                seenPl.add((mapped.name || '').toLowerCase());
+                playlists.push(mapped);
+              }
+            });
+          }
+        } catch (e) { }
+      }
 
       let topResult = null;
       if (artists[0] && artists[0].name.toLowerCase().includes(q.toLowerCase())) {
@@ -171,9 +232,9 @@ router.get(
       }
 
       payload = { topResult, songs, artists, albums, playlists };
+      cacheSet(cacheKey, payload);
     }
 
-    cacheSet(cacheKey, payload);
     res.json(payload);
   })
 );
@@ -233,6 +294,40 @@ router.get(
   wrap(async (req, res) => {
     const playlist = await cached(`playlist:${req.params.id}`, () => ytmusic.getPlaylist(req.params.id));
     res.json(playlist);
+  })
+);
+
+const INSTANT_GLOBAL_HITS = [
+  { videoId: "dQw4w9WgXcQ", name: "Still Water", artist: "Mara Vale", album: "Tide Lines", duration: 232, thumbnail: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "hT_nvWreIhg", name: "Counting Stars", artist: "OneRepublic", album: "Native", duration: 257, thumbnail: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "YQHsXMglC9A", name: "Adele - Hello", artist: "Adele", album: "25", duration: 295, thumbnail: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "OPf0YbXqDm0", name: "Uptown Funk", artist: "Mark Ronson ft. Bruno Mars", album: "Uptown Special", duration: 270, thumbnail: "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "09R8_2nJtjg", name: "Sugar", artist: "Maroon 5", album: "V", duration: 235, thumbnail: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "kJQP7kiw5Fk", name: "Despacito", artist: "Luis Fonsi ft. Daddy Yankee", album: "Vida", duration: 228, thumbnail: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "2Vv-BfVoq4g", name: "Perfect", artist: "Ed Sheeran", album: "÷ (Divide)", duration: 263, thumbnail: "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "CevxZvSJLk8", name: "Roar", artist: "Katy Perry", album: "Prism", duration: 222, thumbnail: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "7wtfhZwyrCA", name: "Believer", artist: "Imagine Dragons", album: "Evolve", duration: 204, thumbnail: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "fJ9rUzIMcZQ", name: "Bohemian Rhapsody", artist: "Queen", album: "A Night at the Opera", duration: 354, thumbnail: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80" }
+];
+
+function shuffleFn(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+router.get(
+  "/global-mix",
+  wrap(async (req, res) => {
+    const cacheKey = "global:mix:all";
+    const hit = cacheGet(cacheKey);
+    if (hit !== undefined && Array.isArray(hit) && hit.length) {
+      return res.json(shuffleFn(hit));
+    }
+    res.json(shuffleFn(INSTANT_GLOBAL_HITS));
   })
 );
 

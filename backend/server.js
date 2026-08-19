@@ -70,7 +70,7 @@ app.use((req, res, next) => {
         </html>
       `);
     }
-  } catch (e) {}
+  } catch (e) { }
   next();
 });
 
@@ -93,7 +93,7 @@ app.use((req, res, next) => {
         lastResetExecuted: existing.lastResetExecuted || 0
       });
     }
-  } catch (e) {}
+  } catch (e) { }
   next();
 });
 
@@ -147,21 +147,29 @@ app.post('/api/admin/toggle-block', (req, res) => {
   }
 });
 
+let globalResetSignal = null;
+
 app.post('/api/admin/reset-cache', (req, res) => {
   const { ip, all } = req.body || {};
   const resetId = 'reset_' + Date.now();
 
+  // Clear in-memory server cache
+  try {
+    cache.clear();
+  } catch (e) {}
+
   if (all) {
+    globalResetSignal = resetId;
     for (const [, s] of activeSessions) {
       s.resetSignal = resetId;
     }
-    return res.json({ success: true, message: 'Reset signal sent to all user sessions' });
+    return res.json({ success: true, message: 'Server cache purged and reset signal broadcast to all user sessions' });
   }
 
   if (ip && activeSessions.has(ip)) {
     const session = activeSessions.get(ip);
     session.resetSignal = resetId;
-    return res.json({ success: true, message: `Reset signal sent to IP ${ip}` });
+    return res.json({ success: true, message: `Server cache purged and reset signal sent to IP ${ip}` });
   }
 
   res.status(400).json({ error: 'Session IP not found' });
@@ -172,8 +180,8 @@ app.get('/api/check-reset', (req, res) => {
   const ip = rawIp.split(',')[0].trim().replace(/^::ffff:/, '');
   const session = activeSessions.get(ip);
 
-  if (session && session.resetSignal) {
-    const resetId = session.resetSignal;
+  const resetId = (session && session.resetSignal) || globalResetSignal;
+  if (resetId) {
     return res.json({ reset: true, resetId });
   }
   res.json({ reset: false });
@@ -281,7 +289,7 @@ function parseLrc(lrcText) {
   const lines = lrcText.split("\n");
   const result = [];
   const tagRegex = /\[(\d{1,2}):(\d{2})(?:[\.:](\d{1,3}))?\]/g;
-  
+
   for (const line of lines) {
     tagRegex.lastIndex = 0;
     const matches = [...line.matchAll(tagRegex)];
@@ -360,7 +368,7 @@ async function getSyncedLyrics(title, artist, duration = 0) {
             bestPlainCandidate = data.plainLyrics;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 2. Multi-Query Fallback Search
@@ -429,7 +437,7 @@ async function getSyncedLyrics(title, artist, duration = 0) {
             bestPlainCandidate = plainItem.plainLyrics;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (bestPlainCandidate) {
@@ -439,7 +447,7 @@ async function getSyncedLyrics(title, artist, duration = 0) {
         return { synced: true, lines: autoSynced };
       }
     }
-  } catch (e) {}
+  } catch (e) { }
   return null;
 }
 
@@ -459,7 +467,7 @@ app.get(
           if (lyricsResult && Array.isArray(lyricsResult.lines) && lyricsResult.lines.length) {
             return res.json({ synced: lyricsResult.synced !== false, lines: lyricsResult.lines });
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       if (videoId && videoId !== "unknown") {
@@ -472,7 +480,7 @@ app.get(
               return res.json({ synced: true, lines: autoSynced });
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       res.json({ synced: false, lines: [] });
@@ -607,23 +615,50 @@ app.get(
   wrap(async (req, res) => {
     const q = (req.query.q || "").trim();
     const type = (req.query.type || "all").toLowerCase();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     if (!q) return res.status(400).json({ error: "Query parameter 'q' is required" });
-
-    const cacheKey = `search:${type}:${q}`;
-    const hit = cacheGet(cacheKey);
-    if (hit !== undefined) return res.json(hit);
 
     let payload;
 
     if (type === "songs") {
-      payload = (await ytmusic.searchSongs(q)).slice(0, 30).map(mapSong);
+      const cacheKey = `search:songs:${q}`;
+      let allSongs = cacheGet(cacheKey);
+      if (allSongs === undefined) {
+        allSongs = (await ytmusic.searchSongs(q)).map(mapSong);
+        cacheSet(cacheKey, allSongs);
+      }
+      const page = allSongs.slice(offset, offset + limit);
+      payload = { songs: page, total: allSongs.length, offset, limit, hasMore: offset + limit < allSongs.length };
     } else if (type === "artists") {
-      payload = (await ytmusic.searchArtists(q)).slice(0, 10).map(mapArtist);
+      const cacheKey = `search:artists:${q}`;
+      let hit = cacheGet(cacheKey);
+      if (hit === undefined) {
+        hit = (await ytmusic.searchArtists(q)).slice(0, 20).map(mapArtist);
+        cacheSet(cacheKey, hit);
+      }
+      payload = hit;
     } else if (type === "albums") {
-      payload = (await ytmusic.searchAlbums(q)).slice(0, 10).map(mapAlbum);
+      const cacheKey = `search:albums:${q}`;
+      let hit = cacheGet(cacheKey);
+      if (hit === undefined) {
+        hit = (await ytmusic.searchAlbums(q)).slice(0, 20).map(mapAlbum);
+        cacheSet(cacheKey, hit);
+      }
+      payload = hit;
     } else if (type === "playlists") {
-      payload = (await ytmusic.searchPlaylists(q)).slice(0, 10).map(mapPlaylist);
+      const cacheKey = `search:playlists:${q}`;
+      let hit = cacheGet(cacheKey);
+      if (hit === undefined) {
+        hit = (await ytmusic.searchPlaylists(q)).slice(0, 20).map(mapPlaylist);
+        cacheSet(cacheKey, hit);
+      }
+      payload = hit;
     } else {
+      const cacheKey = `search:all:${q}`;
+      let hit = cacheGet(cacheKey);
+      if (hit !== undefined) return res.json(hit);
+
       const [songsR, artistsR, albumsR, playlistsR] = await Promise.allSettled([
         ytmusic.searchSongs(q),
         ytmusic.searchArtists(q),
@@ -631,10 +666,62 @@ app.get(
         ytmusic.searchPlaylists(q),
       ]);
 
-      const songs = songsR.status === "fulfilled" ? songsR.value.slice(0, 15).map(mapSong) : [];
-      const artists = artistsR.status === "fulfilled" ? artistsR.value.slice(0, 6).map(mapArtist) : [];
-      const albums = albumsR.status === "fulfilled" ? albumsR.value.slice(0, 6).map(mapAlbum) : [];
-      const playlists = playlistsR.status === "fulfilled" ? playlistsR.value.slice(0, 6).map(mapPlaylist) : [];
+      let songs = songsR.status === "fulfilled" ? songsR.value.slice(0, 20).map(mapSong) : [];
+      let artists = artistsR.status === "fulfilled" ? artistsR.value.slice(0, 6).map(mapArtist) : [];
+      let albums = albumsR.status === "fulfilled" ? albumsR.value.slice(0, 8).map(mapAlbum) : [];
+      let playlists = playlistsR.status === "fulfilled" ? playlistsR.value.slice(0, 8).map(mapPlaylist) : [];
+
+      // If albums are sparse, extract from matched songs or search by artist
+      if (albums.length < 3 && songs.length > 0) {
+        const seenAlbums = new Set(albums.map(a => (a.name || '').toLowerCase()));
+        songs.forEach(s => {
+          if (s.album && s.album !== 'Single' && !seenAlbums.has(s.album.toLowerCase())) {
+            seenAlbums.add(s.album.toLowerCase());
+            albums.push({
+              albumId: s.albumId || null,
+              name: s.album,
+              artist: s.artist,
+              year: "",
+              type: "Album",
+              thumbnail: s.thumbnail
+            });
+          }
+        });
+
+        if (albums.length < 3) {
+          try {
+            const artistQuery = songs[0]?.artist || q;
+            const extraAlbums = await ytmusic.searchAlbums(artistQuery);
+            if (Array.isArray(extraAlbums)) {
+              extraAlbums.slice(0, 6).forEach(al => {
+                const mapped = mapAlbum(al);
+                if (!seenAlbums.has((mapped.name || '').toLowerCase())) {
+                  seenAlbums.add((mapped.name || '').toLowerCase());
+                  albums.push(mapped);
+                }
+              });
+            }
+          } catch (e) { }
+        }
+      }
+
+      // If playlists are sparse, search for matching playlist mixes
+      if (playlists.length < 3 && songs.length > 0) {
+        try {
+          const plQuery = `${q} playlist`;
+          const extraPl = await ytmusic.searchPlaylists(plQuery);
+          if (Array.isArray(extraPl) && extraPl.length) {
+            const seenPl = new Set(playlists.map(p => (p.name || '').toLowerCase()));
+            extraPl.slice(0, 6).forEach(p => {
+              const mapped = mapPlaylist(p);
+              if (!seenPl.has((mapped.name || '').toLowerCase())) {
+                seenPl.add((mapped.name || '').toLowerCase());
+                playlists.push(mapped);
+              }
+            });
+          }
+        } catch (e) { }
+      }
 
       let topResult = null;
       if (artists[0] && artists[0].name.toLowerCase().includes(q.toLowerCase())) {
@@ -646,9 +733,9 @@ app.get(
       }
 
       payload = { topResult, songs, artists, albums, playlists };
+      cacheSet(cacheKey, payload);
     }
 
-    cacheSet(cacheKey, payload);
     res.json(payload);
   })
 );
@@ -663,33 +750,61 @@ const INSTANT_GLOBAL_HITS = [
   { videoId: "2Vv-BfVoq4g", name: "Perfect", artist: "Ed Sheeran", album: "÷ (Divide)", duration: 263, thumbnail: "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=400&q=80" },
   { videoId: "CevxZvSJLk8", name: "Roar", artist: "Katy Perry", album: "Prism", duration: 222, thumbnail: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=400&q=80" },
   { videoId: "7wtfhZwyrCA", name: "Believer", artist: "Imagine Dragons", album: "Evolve", duration: 204, thumbnail: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80" },
-  { videoId: "fJ9rUzIMcZQ", name: "Bohemian Rhapsody", artist: "Queen", album: "A Night at the Opera", duration: 354, thumbnail: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80" }
+  { videoId: "fJ9rUzIMcZQ", name: "Bohemian Rhapsody", artist: "Queen", album: "A Night at the Opera", duration: 354, thumbnail: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "fKopy74weus", name: "Thunder", artist: "Imagine Dragons", album: "Evolve", duration: 187, thumbnail: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "JGwWNGJdvx8", name: "Shape of You", artist: "Ed Sheeran", album: "÷ (Divide)", duration: 233, thumbnail: "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "k2qgadSvNyU", name: "New Rules", artist: "Dua Lipa", album: "Dua Lipa", duration: 209, thumbnail: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "3tmd-ClpJxA", name: "Blinding Lights", artist: "The Weeknd", album: "After Hours", duration: 200, thumbnail: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "ru0K8uYEZWw", name: "Can't Stop the Feeling!", artist: "Justin Timberlake", album: "Trolls", duration: 236, thumbnail: "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "nYh-n7EOtMA", name: "Cheap Thrills", artist: "Sia", album: "This Is Acting", duration: 211, thumbnail: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "0VwhorTQigY", name: "Watermelon Sugar", artist: "Harry Styles", album: "Fine Line", duration: 174, thumbnail: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "nfWlot6h_JM", name: "Shake It Off", artist: "Taylor Swift", album: "1989", duration: 219, thumbnail: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "vRXZj0DzXIA", name: "Castle on the Hill", artist: "Ed Sheeran", album: "÷ (Divide)", duration: 261, thumbnail: "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=400&q=80" },
+  { videoId: "RgKAFK5djSk", name: "See You Again", artist: "Wiz Khalifa ft. Charlie Puth", album: "Furious 7", duration: 229, thumbnail: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80" }
 ];
+
+function shuffleServerArray(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 app.get(
   "/api/global-mix",
   wrap(async (req, res) => {
     const cacheKey = "global:mix:all";
     const hit = cacheGet(cacheKey);
-    if (hit !== undefined) return res.json(hit);
+    if (hit !== undefined && Array.isArray(hit) && hit.length) {
+      return res.json(shuffleServerArray(hit));
+    }
 
-    res.json(INSTANT_GLOBAL_HITS);
+    res.json(shuffleServerArray(INSTANT_GLOBAL_HITS));
 
     (async () => {
       try {
         if (!ready) return;
-        const queries = ["Global Top Hits", "Bollywood Top Hits", "Punjabi Hits", "Billboard Top Songs"];
+        const queries = [
+          "Global Top Hits",
+          "Acoustic Pop Hits",
+          "Indie Chill Tracks",
+          "Billboard Top Songs",
+          "Bollywood Top Hits",
+          "Lo-Fi Beats"
+        ];
         const results = await Promise.allSettled(queries.map(q => ytmusic.searchSongs(q)));
         let combined = [];
         results.forEach((r) => {
           if (r.status === "fulfilled" && Array.isArray(r.value)) {
-            combined = combined.concat(r.value.slice(0, 6).map(mapSong));
+            combined = combined.concat(r.value.slice(0, 8).map(mapSong));
           }
         });
         if (combined.length) {
           cacheSet(cacheKey, combined);
         }
-      } catch (e) {}
+      } catch (e) { }
     })();
   })
 );
@@ -758,7 +873,7 @@ function startServer(port, attemptsLeft = 5) {
 
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
-      try { server.close(); } catch (e) {}
+      try { server.close(); } catch (e) { }
       if (attemptsLeft <= 0) {
         console.error(`Port ${port} is in use and no free port was found nearby.`);
         process.exit(1);
