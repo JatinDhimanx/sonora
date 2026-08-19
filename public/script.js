@@ -368,31 +368,9 @@ async function attemptAudioFailover(track) {
   if (playbackFailoverTimer) clearTimeout(playbackFailoverTimer);
   const videoId = track.videoId;
 
-  if (bgAudioBridge && videoId) {
-    try {
-      bgAudioBridge.src = `${API_BASE}/api/stream/${videoId}`;
-      await bgAudioBridge.play();
-      setPlayingState(true);
-      startProgressTimer();
-      return;
-    } catch (e) { }
-
-    try {
-      const res = await fetch(`${API_BASE}/api/stream-url/${videoId}`);
-      const data = await res.json();
-      if (data && data.url) {
-        bgAudioBridge.src = data.url;
-        await bgAudioBridge.play();
-        setPlayingState(true);
-        startProgressTimer();
-        return;
-      }
-    } catch (e) { }
-  }
-
   if (!track._hasRetriedAlternative) {
     track._hasRetriedAlternative = true;
-    const fallbackQuery = `${track.name || ''} ${track.artist || ''} audio`.trim();
+    const fallbackQuery = `${track.name || ''} ${track.artist || ''}`.trim();
     try {
       const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(fallbackQuery)}&type=songs`);
       const data = await res.json();
@@ -413,35 +391,12 @@ async function attemptAudioFailover(track) {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     if (isPlaying) initBgAudioBridge();
-  } else if (document.visibilityState === 'visible') {
-    if (isPlaying && bgAudioBridge && !bgAudioBridge.paused && !bgAudioBridge.src.includes('data:audio')) {
-      try {
-        const bgTime = bgAudioBridge.currentTime || 0;
-        if (ytPlayer && isPlayerReady && bgTime > 0) {
-          ytPlayer.seekTo(bgTime, true);
-          ytPlayer.playVideo();
-        }
-      } catch (e) { }
-    }
   }
 });
 
 function initBgAudioBridge() {
   if (!bgAudioBridge) return;
-  if (currentTrack && currentTrack.videoId) {
-    const streamUrl = `${API_BASE}/api/stream/${currentTrack.videoId}`;
-    if (!bgAudioBridge.src.includes(currentTrack.videoId)) {
-      bgAudioBridge.src = streamUrl;
-    }
-    if (ytPlayer && isPlayerReady) {
-      try {
-        const curTime = ytPlayer.getCurrentTime() || 0;
-        if (Math.abs(bgAudioBridge.currentTime - curTime) > 2) {
-          bgAudioBridge.currentTime = curTime;
-        }
-      } catch (e) { }
-    }
-  } else if (!bgAudioBridge.src || bgAudioBridge.src !== SILENT_AUDIO_SRC) {
+  if (!bgAudioBridge.src || bgAudioBridge.src !== SILENT_AUDIO_SRC) {
     bgAudioBridge.src = SILENT_AUDIO_SRC;
   }
   bgAudioBridge.play().catch(() => { });

@@ -504,20 +504,20 @@ app.get(
 
       const stream = ytdl(videoId, {
         filter: format => format.hasAudio,
+        quality: "highestaudio",
         highWaterMark: 1 << 25
       });
 
       stream.on("error", (err) => {
-        console.warn("YTDL Stream error:", err.message);
         if (!res.headersSent) {
-          res.status(500).send("Stream error");
+          res.status(404).send("Audio stream unavailable");
         }
       });
 
       stream.pipe(res);
     } catch (err) {
       if (!res.headersSent) {
-        res.status(500).send(err.message);
+        res.status(404).send("Stream format unavailable");
       }
     }
   })
@@ -533,17 +533,19 @@ app.get(
 
     try {
       const info = await ytdl.getInfo(videoId);
-      const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
-      if (audioFormats && audioFormats.length) {
-        return res.json({ url: audioFormats[0].url });
+      if (info && Array.isArray(info.formats)) {
+        const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
+        if (audioFormats && audioFormats.length && audioFormats[0].url) {
+          return res.json({ url: audioFormats[0].url });
+        }
+        const anyAudio = info.formats.find(f => f.hasAudio && f.url);
+        if (anyAudio && anyAudio.url) {
+          return res.json({ url: anyAudio.url });
+        }
       }
-      const anyAudio = info.formats.find(f => f.hasAudio);
-      if (anyAudio && anyAudio.url) {
-        return res.json({ url: anyAudio.url });
-      }
-      res.status(404).json({ error: "No audio format found" });
+      res.status(404).json({ error: "No direct audio format found" });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(404).json({ error: "Unable to resolve direct stream" });
     }
   })
 );
